@@ -1,42 +1,40 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ── Permissions ───────────────────────────────────────── -->
-
-    <!-- Required for flutter_background_service persistent process -->
+    <!-- Existing permissions -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- Required on Android 14+ for special-use foreground services -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <!-- Restarts background service after device reboot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- Required on Android 13+ to show any notification -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Detailed battery discharge data via BatteryManager -->
     <uses-permission android:name="android.permission.BATTERY_STATS" />
-    <!-- Requests Doze mode exemption to keep BGS alive overnight -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <!-- App usage statistics via UsageStatsManager (granted manually in settings) -->
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
-    <!-- Draw the Focus Mode overlay above other apps -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <!-- NEW: Draw overlay over any app (for focus lock overlay) -->
+    <!-- Same as above but explicit for clarity -->
+
+    <!-- NEW: Do Not Disturb control -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
+    <!-- NEW: Change system brightness -->
+    <uses-permission
+        android:name="android.permission.WRITE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- NEW: Set system alarms (morning alarm) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- NEW: Kill background processes (stop TikTok etc.) -->
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+
     <application
-        android:label="phaseout"
+        android:label="PhaseOut"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-
-        <!-- Notification Listener — required for MediaSessionManager -->
-<service
-    android:name=".PhaseOutNotificationListener"
-    android:label="PhaseOut Media Control"
-    android:exported="true"
-    android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-    <intent-filter>
-        <action android:name="android.service.notification.NotificationListenerService" />
-    </intent-filter>
-</service>
 
         <activity
             android:name=".MainActivity"
@@ -47,10 +45,6 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
-            <!-- Specifies an Android theme to apply to this Activity as soon as
-                 the Android process has started. This theme is visible to the user
-                 while the Flutter UI initializes. After that, this theme continues
-                 to determine the Window background behind the Flutter UI. -->
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
@@ -60,15 +54,39 @@
             </intent-filter>
         </activity>
 
-        <!-- ── flutter_background_service ───────────────────── -->
-        <!-- foregroundServiceType="specialUse" required on Android 14+ -->
+        <!-- PhaseOut native service -->
         <service
-    android:name="id.flutter.flutter_background_service.BackgroundService"
-    android:foregroundServiceType="specialUse"
-    android:exported="false"
-    tools:replace="android:exported" />
+            android:name=".PhaseOutService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false" />
 
-        <!-- ── flutter_local_notifications ──────────────────── -->
+        <!-- Boot receiver -->
+        <receiver android:name=".BootReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Notification Listener -->
+        <service
+            android:name=".PhaseOutNotificationListener"
+            android:label="PhaseOut Media Control"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Flutter background service -->
+        <service
+            android:name="id.flutter.flutter_background_service.BackgroundService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false"
+            tools:replace="android:exported" />
+
+        <!-- flutter_local_notifications -->
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
             android:exported="false" />
@@ -83,18 +101,9 @@
             </intent-filter>
         </receiver>
 
-        <!-- Don't delete the meta-data below.
-             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
-
+        <meta-data android:name="flutterEmbedding" android:value="2" />
     </application>
 
-    <!-- Required to query activities that can process text, see:
-         https://developer.android.com/training/package-visibility and
-         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
-         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>

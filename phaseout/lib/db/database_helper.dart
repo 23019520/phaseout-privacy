@@ -1,11 +1,6 @@
 // ─────────────────────────────────────────────────────────────
 //  lib/db/database_helper.dart
 //  PhaseOut — sqflite database access layer
-//
-//  Singleton pattern: call DatabaseHelper.instance to get the
-//  shared instance. The database is opened once and reused.
-//
-//  All database calls are async and return Futures.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:sqflite/sqflite.dart';
@@ -16,6 +11,8 @@ import '../utils/constants.dart';
 import '../utils/logger.dart';
 import 'migrations.dart';
 import '../models/app_usage_model.dart';
+import '../models/focus_session_model.dart';
+import '../models/battery_snapshot_model.dart';
 
 class DatabaseHelper {
 
@@ -26,7 +23,6 @@ class DatabaseHelper {
   factory DatabaseHelper() => instance;
   DatabaseHelper._internal();
 
-  // The actual sqflite Database object. Lazily opened on first access.
   static Database? _database;
 
   Future<Database> get database async {
@@ -39,31 +35,35 @@ class DatabaseHelper {
   Future<Database> _initDatabase() async {
     final dbPath = await getDatabasesPath();
     final path   = join(dbPath, AppConstants.dbName);
-
     AppLogger.i(_tag, 'Opening database at $path');
 
     return await openDatabase(
       path,
-      version:  AppConstants.dbVersion,
-      onCreate: _onCreate,
+      version:   AppConstants.dbVersion, // now 4
+      onCreate:  _onCreate,
       onUpgrade: _onUpgrade,
     );
   }
 
-  // Called once on first install
+  // Called on fresh install — build all tables at current version
   Future<void> _onCreate(Database db, int version) async {
-  AppLogger.i(_tag, 'Creating database schema v$version');
-  await DatabaseMigrations.createV1(db);
-  if (version >= 2) await DatabaseMigrations.migrateV1ToV2(db);
-}
+    AppLogger.i(_tag, 'Creating database schema v$version');
+    await DatabaseMigrations.createV1(db);
+    if (version >= 2) await DatabaseMigrations.migrateV1ToV2(db);
+    if (version >= 3) await DatabaseMigrations.migrateV2ToV3(db);
+    // v4 columns (wake_hour, wake_minute) are baked into _createSchedules
+    // in migrations.dart so no extra call needed for fresh installs.
+  }
 
-  // Called when dbVersion is bumped in a future release
+  // Called when existing install upgrades from an older version
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-  AppLogger.i(_tag, 'Upgrading database from v$oldVersion to v$newVersion');
-  if (oldVersion < 2) await DatabaseMigrations.migrateV1ToV2(db);
-}
+    AppLogger.i(_tag, 'Upgrading database v$oldVersion → v$newVersion');
+    if (oldVersion < 2) await DatabaseMigrations.migrateV1ToV2(db);
+    if (oldVersion < 3) await DatabaseMigrations.migrateV2ToV3(db);
+    if (oldVersion < 4) await DatabaseMigrations.migrateV3ToV4(db);
+  }
 
-  // ── Close (call during testing only) ──────────────────────
+  // ── Close (testing only) ───────────────────────────────────
   Future<void> close() async {
     final db = await database;
     await db.close();
@@ -75,7 +75,6 @@ class DatabaseHelper {
   //  SCHEDULES
   // ─────────────────────────────────────────────────────────
 
-  // Insert a new schedule. Returns the new row ID.
   Future<int> insertSchedule(ScheduleModel schedule) async {
     try {
       final db = await database;
@@ -92,14 +91,13 @@ class DatabaseHelper {
     }
   }
 
-  // Update an existing schedule by its ID.
   Future<int> updateSchedule(ScheduleModel schedule) async {
     try {
-      final db = await database;
+      final db    = await database;
       final count = await db.update(
         AppConstants.tableSchedules,
         schedule.toMap(),
-        where: 'id = ?',
+        where:     'id = ?',
         whereArgs: [schedule.id],
       );
       AppLogger.d(_tag, 'Updated schedule id=${schedule.id}');
@@ -110,13 +108,12 @@ class DatabaseHelper {
     }
   }
 
-  // Delete a schedule by its ID.
   Future<int> deleteSchedule(int id) async {
     try {
-      final db = await database;
+      final db    = await database;
       final count = await db.delete(
         AppConstants.tableSchedules,
-        where: 'id = ?',
+        where:     'id = ?',
         whereArgs: [id],
       );
       AppLogger.d(_tag, 'Deleted schedule id=$id');
@@ -127,14 +124,12 @@ class DatabaseHelper {
     }
   }
 
-  // Returns all enabled schedules.
-  // Called by SchedulerService on every BGS tick.
   Future<List<ScheduleModel>> getEnabledSchedules() async {
     try {
       final db   = await database;
       final maps = await db.query(
         AppConstants.tableSchedules,
-        where: 'enabled = ?',
+        where:     'enabled = ?',
         whereArgs: [1],
       );
       return maps.map(ScheduleModel.fromMap).toList();
@@ -144,8 +139,6 @@ class DatabaseHelper {
     }
   }
 
-  // Returns all schedules (enabled and disabled).
-  // Used by the Schedules list screen.
   Future<List<ScheduleModel>> getAllSchedules() async {
     try {
       final db   = await database;
@@ -160,20 +153,19 @@ class DatabaseHelper {
     }
   }
 
-  // Returns a single schedule by ID. Returns null if not found.
   Future<ScheduleModel?> getScheduleById(int id) async {
     try {
       final db   = await database;
       final maps = await db.query(
         AppConstants.tableSchedules,
-        where: 'id = ?',
+        where:     'id = ?',
         whereArgs: [id],
-        limit: 1,
+        limit:     1,
       );
       if (maps.isEmpty) return null;
       return ScheduleModel.fromMap(maps.first);
     } catch (e, st) {
-      AppLogger.e(_tag, 'Failed to get schedule by id=$id', e, st);
+      AppLogger.e(_tag, 'Failed to get schedule id=$id', e, st);
       return null;
     }
   }
@@ -181,9 +173,7 @@ class DatabaseHelper {
   // ─────────────────────────────────────────────────────────
   //  APP USAGE
   // ─────────────────────────────────────────────────────────
- 
-  // Insert a new usage row or update minutes if row already exists.
-  // Uses the UNIQUE(package_name, date) constraint.
+
   Future<void> insertOrUpdateUsage(AppUsageModel usage) async {
     try {
       final db = await database;
@@ -198,27 +188,23 @@ class DatabaseHelper {
       rethrow;
     }
   }
- 
-  // Returns all app usage rows for a given date (YYYY-MM-DD).
-  // Ordered by usage_minutes descending — most used first.
+
   Future<List<AppUsageModel>> getUsageForDate(String date) async {
     try {
       final db   = await database;
       final maps = await db.query(
         AppConstants.tableAppUsage,
-        where:   'date = ?',
+        where:     'date = ?',
         whereArgs: [date],
-        orderBy: 'usage_minutes DESC',
+        orderBy:   'usage_minutes DESC',
       );
       return maps.map(AppUsageModel.fromMap).toList();
     } catch (e, st) {
-      AppLogger.e(_tag, 'Failed to get usage for date $date', e, st);
+      AppLogger.e(_tag, 'Failed to get usage for $date', e, st);
       return [];
     }
   }
- 
-  // Returns a single usage row for a specific app on a specific date.
-  // Returns null if no row exists yet for that app/date combination.
+
   Future<AppUsageModel?> getUsageForPackage(
     String packageName,
     String date,
@@ -238,29 +224,25 @@ class DatabaseHelper {
       return null;
     }
   }
- 
-  // Sets or updates the daily usage limit for an app.
-  // Creates a stub row for today if one doesn't exist yet.
+
   Future<void> setAppLimit(String packageName, int limitMinutes) async {
     try {
       final db    = await database;
       final today = AppUsageModel.todayString();
- 
-      // Try to update existing row first
+
       final count = await db.update(
         AppConstants.tableAppUsage,
         {'limit_minutes': limitMinutes},
         where:     'package_name = ? AND date = ?',
         whereArgs: [packageName, today],
       );
- 
-      // If no row existed yet, insert a stub with 0 minutes used
+
       if (count == 0) {
         await db.insert(
           AppConstants.tableAppUsage,
           AppUsageModel(
             packageName:  packageName,
-            appLabel:     packageName, // real label filled in by monitor
+            appLabel:     packageName,
             date:         today,
             usageMinutes: 0,
             limitMinutes: limitMinutes,
@@ -268,22 +250,19 @@ class DatabaseHelper {
           conflictAlgorithm: ConflictAlgorithm.ignore,
         );
       }
- 
+
       AppLogger.i(_tag, 'Limit set: $packageName = ${limitMinutes}m/day');
     } catch (e, st) {
       AppLogger.e(_tag, 'Failed to set limit for $packageName', e, st);
       rethrow;
     }
   }
- 
-  // Returns all apps where usage has reached or exceeded the limit today.
-  // Called by UsageMonitorService on every BGS tick.
+
   Future<List<AppUsageModel>> getAppsOverLimit() async {
     try {
       final db    = await database;
       final today = AppUsageModel.todayString();
- 
-      // Raw query because sqflite WHERE doesn't support column comparisons
+
       final maps = await db.rawQuery('''
         SELECT * FROM ${AppConstants.tableAppUsage}
         WHERE date = ?
@@ -291,20 +270,102 @@ class DatabaseHelper {
           AND usage_minutes >= limit_minutes
         ORDER BY usage_minutes DESC
       ''', [today]);
- 
+
       return maps.map(AppUsageModel.fromMap).toList();
     } catch (e, st) {
       AppLogger.e(_tag, 'Failed to get apps over limit', e, st);
       return [];
     }
   }
- 
+
+  // ─────────────────────────────────────────────────────────
+  //  FOCUS SESSIONS
+  // ─────────────────────────────────────────────────────────
+
+  Future<int> insertFocusSession(FocusSessionModel session) async {
+    try {
+      final db = await database;
+      final id = await db.insert(
+        AppConstants.tableFocusSessions,
+        session.toMap(),
+      );
+      AppLogger.d(_tag, 'Focus session inserted id=$id');
+      return id;
+    } catch (e, st) {
+      AppLogger.e(_tag, 'Failed to insert focus session', e, st);
+      rethrow;
+    }
+  }
+
+  Future<void> endFocusSession(int id) async {
+    try {
+      final db = await database;
+      await db.update(
+        AppConstants.tableFocusSessions,
+        {'end_time': DateTime.now().toIso8601String()},
+        where:     'id = ?',
+        whereArgs: [id],
+      );
+      AppLogger.d(_tag, 'Focus session ended id=$id');
+    } catch (e, st) {
+      AppLogger.e(_tag, 'Failed to end focus session', e, st);
+      rethrow;
+    }
+  }
+
+  Future<void> incrementBlockedAttempts(int sessionId) async {
+    try {
+      final db = await database;
+      await db.rawUpdate('''
+        UPDATE ${AppConstants.tableFocusSessions}
+        SET blocked_attempts = blocked_attempts + 1
+        WHERE id = ?
+      ''', [sessionId]);
+    } catch (e, st) {
+      AppLogger.e(_tag, 'Failed to increment blocked attempts', e, st);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────
+  //  BATTERY SNAPSHOTS
+  // ─────────────────────────────────────────────────────────
+
+  Future<void> insertBatterySnapshot(BatterySnapshotModel snapshot) async {
+    try {
+      final db = await database;
+      await db.insert(AppConstants.tableBattery, snapshot.toMap());
+      AppLogger.d(_tag, 'Battery snapshot: ${snapshot.level}%');
+    } catch (e, st) {
+      AppLogger.e(_tag, 'Failed to insert battery snapshot', e, st);
+      rethrow;
+    }
+  }
+
+  Future<List<BatterySnapshotModel>> getBatterySnapshots({
+    int days = 28,
+  }) async {
+    try {
+      final db    = await database;
+      final since = DateTime.now()
+          .subtract(Duration(days: days))
+          .toIso8601String();
+      final maps  = await db.query(
+        AppConstants.tableBattery,
+        where:     'recorded_at > ?',
+        whereArgs: [since],
+        orderBy:   'recorded_at DESC',
+      );
+      return maps.map(BatterySnapshotModel.fromMap).toList();
+    } catch (e, st) {
+      AppLogger.e(_tag, 'Failed to get battery snapshots', e, st);
+      return [];
+    }
+  }
 
   // ─────────────────────────────────────────────────────────
   //  USAGE EVENTS
   // ─────────────────────────────────────────────────────────
 
-  // Write a BGS action log entry.
   Future<int> insertUsageEvent(UsageEventModel event) async {
     try {
       final db = await database;
@@ -320,7 +381,6 @@ class DatabaseHelper {
     }
   }
 
-  // Returns all usage events ordered by most recent first.
   Future<List<UsageEventModel>> getUsageEvents({int limit = 100}) async {
     try {
       final db   = await database;

@@ -1,21 +1,16 @@
 // ─────────────────────────────────────────────────────────────
-//  android/app/src/main/kotlin/com/brightdev/phaseout/MainActivity.kt
-//  PhaseOut — Native Android MethodChannel handler
-//
-//  Channels handled:
-//    com.brightdev.phaseout/media  — stop media, audio focus, launch app
-//    com.brightdev.phaseout/usage  — app usage stats, permission check
+//  MainActivity.kt — PhaseOut
 // ─────────────────────────────────────────────────────────────
 
 package com.brightdev.phaseout
 
 import android.app.AppOpsManager
 import android.app.usage.UsageStatsManager
-import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
-import android.media.AudioManager
-import android.media.session.MediaSessionManager
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
@@ -23,7 +18,7 @@ import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import android.service.notification.NotificationListenerService
+import java.io.ByteArrayOutputStream
 
 class MainActivity : FlutterActivity() {
 
@@ -33,233 +28,168 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        startPhaseOutService()
         setupMediaChannel(flutterEngine)
         setupUsageChannel(flutterEngine)
     }
 
-    // ── Media channel ─────────────────────────────────────────
+    private fun startPhaseOutService() {
+        try {
+            val intent = Intent(this, PhaseOutService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                startForegroundService(intent)
+            else startService(intent)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to start PhaseOutService: ${e.message}")
+        }
+    }
+
     private fun setupMediaChannel(flutterEngine: FlutterEngine) {
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            mediaChannelName
-        ).setMethodCallHandler { call, result ->
-            Log.d(tag, "Media channel received: ${call.method}")
-            when (call.method) {
-                "stopAllMedia" -> {
-                    val success = handleStopAllMedia()
-                    Log.d(tag, "stopAllMedia result: $success")
-                    result.success(success)
-                }
-                "releaseAudioFocus" -> {
-                    val success = handleReleaseAudioFocus()
-                    Log.d(tag, "releaseAudioFocus result: $success")
-                    result.success(success)
-                }
-                "launchApp" -> {
-                    val packageName = call.argument<String>("package")
-                    if (packageName == null) {
-                        result.error("INVALID_ARGUMENT", "package name required", null)
-                        return@setMethodCallHandler
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, mediaChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "stopAllMedia" -> { sendServiceIntent(PhaseOutService.ACTION_STOP_MEDIA); result.success(true) }
+                    "releaseAudioFocus" -> { sendServiceIntent(PhaseOutService.ACTION_STOP_MEDIA); result.success(true) }
+                    "setAudioTimer" -> {
+                        val ms = call.argument<Long>("expiryMs")
+                        if (ms == null) result.error("INVALID_ARGUMENT","expiryMs required",null)
+                        else {
+                            startServiceIntent(Intent(this, PhaseOutService::class.java).apply {
+                                action = PhaseOutService.ACTION_SET_TIMER
+                                putExtra(PhaseOutService.EXTRA_EXPIRY_MS, ms)
+                            }); result.success(true)
+                        }
                     }
-                    result.success(handleLaunchApp(packageName))
+                    "cancelAudioTimer" -> { sendServiceIntent(PhaseOutService.ACTION_CANCEL_TIMER); result.success(true) }
+                    "startFocus" -> {
+                        val al = call.argument<List<String>>("allowlist") ?: emptyList()
+                        startServiceIntent(Intent(this, PhaseOutService::class.java).apply {
+                            action = PhaseOutService.ACTION_START_FOCUS
+                            putStringArrayListExtra(PhaseOutService.EXTRA_ALLOWLIST, ArrayList(al))
+                        }); result.success(true)
+                    }
+                    "stopFocus" -> { sendServiceIntent(PhaseOutService.ACTION_STOP_FOCUS); result.success(true) }
+                    "launchApp" -> {
+                        val pkg = call.argument<String>("package")
+                        if (pkg == null) result.error("INVALID_ARGUMENT","package required",null)
+                        else result.success(handleLaunchApp(pkg))
+                    }
+                    "openNotificationSettings" -> {
+                        startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
                 }
-                else -> result.notImplemented()
             }
-        }
     }
 
-    // ── Usage channel ─────────────────────────────────────────
     private fun setupUsageChannel(flutterEngine: FlutterEngine) {
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            usageChannelName
-        ).setMethodCallHandler { call, result ->
-            Log.d(tag, "Usage channel received: ${call.method}")
-            when (call.method) {
-                "getUsageStats" -> {
-                    val startMs = call.argument<Long>("startMs")
-                    val endMs   = call.argument<Long>("endMs")
-                    if (startMs == null || endMs == null) {
-                        result.error("INVALID_ARGUMENT", "startMs and endMs required", null)
-                        return@setMethodCallHandler
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, usageChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getUsageStats" -> {
+                        val startMs = call.argument<Long>("startMs")
+                        val endMs   = call.argument<Long>("endMs")
+                        if (startMs == null || endMs == null)
+                            result.error("INVALID_ARGUMENT","startMs and endMs required",null)
+                        else result.success(handleGetUsageStats(startMs, endMs))
                     }
-                    result.success(handleGetUsageStats(startMs, endMs))
-                }
-                "hasUsagePermission" -> {
-                    result.success(hasUsagePermission())
-                }
-                "openUsageSettings" -> {
-                    handleOpenUsageSettings()
-                    result.success(null)
-                }
-                else -> result.notImplemented()
-            }
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────
-    //  MEDIA HANDLERS
-    // ─────────────────────────────────────────────────────────
-
-    private fun handleStopAllMedia(): Boolean {
-        return try {
-            val mediaSessionManager = getSystemService(
-                Context.MEDIA_SESSION_SERVICE
-            ) as MediaSessionManager
-
-            val componentName = ComponentName(
-                this,
-                PhaseOutNotificationListener::class.java
-            )
-
-            val activeSessions = mediaSessionManager.getActiveSessions(componentName)
-
-            if (activeSessions.isEmpty()) {
-                Log.d(tag, "No active media sessions found")
-                return handleReleaseAudioFocus()
-            }
-
-            var stopped = 0
-            for (session in activeSessions) {
-                try {
-                    session.transportControls.stop()
-                    stopped++
-                    Log.d(tag, "Stopped session: ${session.packageName}")
-                } catch (e: Exception) {
-                    Log.w(tag, "Could not stop ${session.packageName}: ${e.message}")
+                    "hasUsagePermission" -> result.success(hasUsagePermission())
+                    "openUsageSettings" -> {
+                        startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        result.success(null)
+                    }
+                    "getAppLabel" -> {
+                        val pkg = call.argument<String>("packageName")
+                        if (pkg == null) result.error("INVALID_ARGUMENT","packageName required",null)
+                        else result.success(getAppLabel(pkg))
+                    }
+                    "getAppIcon" -> {
+                        val pkg = call.argument<String>("packageName")
+                        if (pkg == null) result.error("INVALID_ARGUMENT","packageName required",null)
+                        else result.success(getAppIconBytes(pkg))
+                    }
+                    else -> result.notImplemented()
                 }
             }
-            Log.d(tag, "Stopped $stopped/${activeSessions.size} sessions")
-            true
-
-        } catch (e: SecurityException) {
-            Log.w(tag, "SecurityException — falling back to audio focus: ${e.message}")
-            handleReleaseAudioFocus()
-        } catch (e: Exception) {
-            Log.e(tag, "handleStopAllMedia failed: ${e.message}")
-            false
-        }
     }
-
-    private fun handleReleaseAudioFocus(): Boolean {
-        return try {
-            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val request = android.media.AudioFocusRequest.Builder(
-                    AudioManager.AUDIOFOCUS_GAIN
-                ).build()
-                audioManager.abandonAudioFocusRequest(request)
-            } else {
-                @Suppress("DEPRECATION")
-                audioManager.abandonAudioFocus(null)
-            }
-            Log.d(tag, "Audio focus released")
-            true
-        } catch (e: Exception) {
-            Log.e(tag, "handleReleaseAudioFocus failed: ${e.message}")
-            false
-        }
-    }
-
-    private fun handleLaunchApp(packageName: String): Boolean {
-        return try {
-            val intent = packageManager.getLaunchIntentForPackage(packageName)
-            if (intent == null) {
-                Log.w(tag, "No launch intent for: $packageName")
-                return false
-            }
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
-            Log.d(tag, "Launched: $packageName")
-            true
-        } catch (e: Exception) {
-            Log.e(tag, "handleLaunchApp($packageName) failed: ${e.message}")
-            false
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────
-    //  USAGE HANDLERS
-    // ─────────────────────────────────────────────────────────
 
     private fun handleGetUsageStats(startMs: Long, endMs: Long): Map<String, Long> {
         return try {
-            if (!hasUsagePermission()) {
-                Log.w(tag, "PACKAGE_USAGE_STATS not granted")
-                return emptyMap()
-            }
-
-            val usageManager = getSystemService(
-                Context.USAGE_STATS_SERVICE
-            ) as UsageStatsManager
-
-            val stats = usageManager.queryUsageStats(
-                UsageStatsManager.INTERVAL_DAILY,
-                startMs,
-                endMs
-            )
-
-            if (stats.isNullOrEmpty()) {
-                Log.d(tag, "No usage stats returned")
-                return emptyMap()
-            }
-
-            // Aggregate by package name (queryUsageStats can return duplicates)
+            if (!hasUsagePermission()) return emptyMap()
+            val usm = getSystemService(USAGE_STATS_SERVICE) as UsageStatsManager
+            val windowSec = (endMs - startMs) / 1000
+            val interval  = if (windowSec < 3600) UsageStatsManager.INTERVAL_BEST
+                            else UsageStatsManager.INTERVAL_DAILY
+            val stats = usm.queryUsageStats(interval, startMs, endMs) ?: return emptyMap()
             val result = mutableMapOf<String, Long>()
             for (stat in stats) {
-                val minutes = stat.totalTimeInForeground / 60000L
-                if (minutes > 0) {
-                    result[stat.packageName] = (result[stat.packageName] ?: 0L) + minutes
-                }
+                val mins = stat.totalTimeInForeground / 60000L
+                if (mins > 0) result[stat.packageName] = (result[stat.packageName] ?: 0L) + mins
             }
-
-            Log.d(tag, "Usage stats: ${result.size} apps with foreground time")
             result
-
-        } catch (e: Exception) {
-            Log.e(tag, "handleGetUsageStats failed: ${e.message}")
-            emptyMap()
-        }
+        } catch (e: Exception) { emptyMap() }
     }
 
     private fun hasUsagePermission(): Boolean {
         return try {
-            val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                appOps.unsafeCheckOpNoThrow(
-                    AppOpsManager.OPSTR_GET_USAGE_STATS,
-                    Process.myUid(),
-                    packageName
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                appOps.checkOpNoThrow(
-                    AppOpsManager.OPSTR_GET_USAGE_STATS,
-                    Process.myUid(),
-                    packageName
-                )
-            }
+            val appOps = getSystemService(APP_OPS_SERVICE) as AppOpsManager
+            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+            else @Suppress("DEPRECATION")
+                appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
             mode == AppOpsManager.MODE_ALLOWED
-        } catch (e: Exception) {
-            Log.e(tag, "hasUsagePermission check failed: ${e.message}")
-            false
-        }
+        } catch (e: Exception) { false }
     }
 
-    private fun handleOpenUsageSettings() {
-        try {
-            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+    private fun getAppLabel(packageName: String): String {
+        return try {
+            val info = packageManager.getApplicationInfo(packageName, PackageManager.GET_META_DATA)
+            packageManager.getApplicationLabel(info).toString()
+        } catch (e: Exception) { packageName }
+    }
+
+    private fun getAppIconBytes(packageName: String): ByteArray? {
+        return try {
+            val drawable = packageManager.getApplicationIcon(packageName)
+            val bitmap = when (drawable) {
+                is BitmapDrawable -> drawable.bitmap
+                else -> {
+                    val bmp = Bitmap.createBitmap(
+                        drawable.intrinsicWidth.coerceAtLeast(48),
+                        drawable.intrinsicHeight.coerceAtLeast(48),
+                        Bitmap.Config.ARGB_8888)
+                    val canvas = Canvas(bmp)
+                    drawable.setBounds(0, 0, canvas.width, canvas.height)
+                    drawable.draw(canvas)
+                    bmp
+                }
+            }
+            val stream  = ByteArrayOutputStream()
+            val scaled  = Bitmap.createScaledBitmap(bitmap, 48, 48, true)
+            scaled.compress(Bitmap.CompressFormat.PNG, 90, stream)
+            stream.toByteArray()
+        } catch (e: Exception) { null }
+    }
+
+    private fun handleLaunchApp(packageName: String): Boolean {
+        return try {
+            val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return false
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
-        } catch (e: Exception) {
-            Log.e(tag, "handleOpenUsageSettings failed: ${e.message}")
-        }
+            startActivity(intent); true
+        } catch (e: Exception) { false }
+    }
+
+    private fun sendServiceIntent(action: String) {
+        startServiceIntent(Intent(this, PhaseOutService::class.java).apply { this.action = action })
+    }
+
+    private fun startServiceIntent(intent: Intent) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
+            else startService(intent)
+        } catch (e: Exception) { Log.e(tag, "startServiceIntent: ${e.message}") }
     }
 }
-
-// ─────────────────────────────────────────────────────────────
-//  Notification Listener Service
-//  Required for MediaSessionManager.getActiveSessions()
-//  Declare this in AndroidManifest.xml inside <application>
-// ─────────────────────────────────────────────────────────────
-class PhaseOutNotificationListener : NotificationListenerService()

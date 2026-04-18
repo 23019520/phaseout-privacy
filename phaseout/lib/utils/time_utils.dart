@@ -71,16 +71,18 @@ class TimeUtils {
   // Converts a future DateTime to a display string.
   // e.g. "Tonight", "Tomorrow", "Monday", "In 3 days"
   static String relativeOccurrence(DateTime target) {
-    final now   = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final day   = DateTime(target.year, target.month, target.day);
-    final diff  = day.difference(today).inDays;
+  final now   = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final day   = DateTime(target.year, target.month, target.day);
+  final diff  = day.difference(today).inDays;
 
-    if (diff == 0) return 'Tonight';
-    if (diff == 1) return 'Tomorrow';
-    if (diff < 7)  return AppConstants.dayAbbreviations[target.weekday - 1];
-    return 'In $diff days';
+  if (diff == 0) {
+    return target.hour < 12 ? 'This morning' : 'Tonight';
   }
+  if (diff == 1) return 'Tomorrow';
+  if (diff < 7)  return AppConstants.dayAbbreviations[target.weekday - 1];
+  return 'In $diff days';
+}
 
   // ── TimeOfDay formatters ───────────────────────────────────
 
