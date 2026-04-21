@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PhaseOut — Privacy Policy</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #ffffff;
+      color: #1e293b;
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 17px;
+      line-height: 1.75;
+    }
+
+    header {
+      border-bottom: 1px solid #e2e8f0;
+      padding: 32px 0 28px;
+      text-align: center;
+    }
+
+    header .moon {
+      font-size: 36px;
+      display: block;
+      margin-bottom: 12px;
+    }
+
+    header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: #0f172a;
+      letter-spacing: -0.3px;
+    }
+
+    header p {
+      font-size: 15px;
+      color: #64748b;
+      margin-top: 6px;
+      font-style: italic;
+    }
+
+    main {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 52px 24px 80px;
+    }
+
+    .updated {
+      display: inline-block;
+      font-size: 12px;
+      color: #94a3b8;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      margin-bottom: 36px;
+    }
+
+    .intro {
+      font-size: 18px;
+      color: #334155;
+      line-height: 1.8;
+      margin-bottom: 16px;
+    }
+
+    .summary {
+      border-left: 3px solid #0f172a;
+      padding: 14px 20px;
+      margin: 28px 0 48px;
+      font-size: 16px;
+      color: #334155;
+      font-style: italic;
+    }
+
+    h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 48px 0 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    p {
+      color: #334155;
+      font-size: 16px;
+      line-height: 1.8;
+      margin-bottom: 14px;
+    }
+
+    ul {
+      list-style: none;
+      margin: 12px 0 14px;
+      padding: 0;
+    }
+
+    ul li {
+      color: #334155;
+      font-size: 16px;
+      line-height: 1.75;
+      padding: 5px 0 5px 22px;
+      position: relative;
+    }
+
+    ul li::before {
+      content: '—';
+      position: absolute;
+      left: 0;
+      color: #94a3b8;
+    }
+
+    strong { color: #0f172a; font-weight: 600; }
+
+    a {
+      color: #0f172a;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    a:hover { color: #475569; }
+
+    footer {
+      border-top: 1px solid #e2e8f0;
+      padding: 32px 24px;
+      text-align: center;
+      color: #94a3b8;
+      font-size: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    footer a { color: #64748b; }
+
+    @media (max-width: 600px) {
+      body { font-size: 16px; }
+      main { padding: 36px 20px 60px; }
+      h2   { font-size: 18px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="moon">🌙</span>
+  <h1>PhaseOut</h1>
+  <p>Sleep &amp; Focus · Privacy Policy</p>
+</header>
+
+<main>
+  <span class="updated">Last updated: April 2026</span>
+
+  <p class="intro">
+    PhaseOut is built by BrightDev. This policy explains what data the app
+    accesses, what it does with that data, and what it will never do.
+  </p>
+
+  <blockquote class="summary">
+    PhaseOut does not collect, upload, or sell your personal data.
+    Everything stays on your device.
+  </blockquote>
+
+  <h2>Data we access on your device</h2>
+  <p>PhaseOut reads the following data locally to provide its features:</p>
+  <ul>
+    <li><strong>App usage statistics</strong> — how long you spend in each app each day, used to display screen time and enforce limits you set yourself</li>
+    <li><strong>Battery level and charging state</strong> — used to predict when your battery will reach 20%, recalculated daily from your own device's history</li>
+    <li><strong>Notification access</strong> — used only to detect active media sessions and stop audio at your scheduled bedtime</li>
+    <li><strong>Screen brightness</strong> — read and written only when you enable the dim brightness bedtime option</li>
+    <li><strong>Do Not Disturb status</strong> — toggled only when you enable the DND bedtime option; your previous setting is restored in the morning</li>
+  </ul>
+
+  <h2>Data that stays on your device</h2>
+  <p>
+    All data PhaseOut creates or accesses is stored locally in a SQLite
+    database on your device. This includes your schedules, daily usage
+    records, battery snapshots, focus sessions, and activity logs.
+  </p>
+  <p>
+    <strong>None of this is transmitted to any server, third party, or
+    cloud service.</strong> Deleting the app removes all data permanently.
+  </p>
+
+  <h2>Network access</h2>
+  <p>
+    PhaseOut does not make network requests during normal operation.
+    The only network activity is Firebase Crashlytics, which sends
+    anonymous crash reports when the app encounters an error. These reports
+    contain the type of error, your device model, Android version, and app
+    version number. They do not contain usage data, schedule contents,
+    or any personally identifying information.
+  </p>
+  <p>
+    You can disable crash reporting at any time in
+    <strong>Settings → Privacy → Crash analytics</strong>.
+  </p>
+
+  <h2>Permissions we request</h2>
+  <p>
+    PhaseOut requests permissions only when you first use the feature that
+    needs them — not all at once on first open.
+  </p>
+  <ul>
+    <li><strong>Notifications</strong> — to send bedtime reminders and schedule alerts</li>
+    <li><strong>Usage Access</strong> — to show per-app screen time</li>
+    <li><strong>Notification Listener</strong> — to stop media from any app at bedtime</li>
+    <li><strong>Display over other apps</strong> — to show the focus lock overlay</li>
+    <li><strong>Battery optimisation exemption</strong> — to keep the background service alive overnight</li>
+    <li><strong>Do Not Disturb access</strong> — only if you enable the DND bedtime option</li>
+    <li><strong>Modify system settings</strong> — only if you enable the brightness dim option</li>
+    <li><strong>Set exact alarms</strong> — to schedule the morning alarm</li>
+  </ul>
+
+  <h2>What we never do</h2>
+  <ul>
+    <li>Collect or upload your app usage data</li>
+    <li>Read your messages, contacts, photos, or files</li>
+    <li>Share data with advertisers or data brokers</li>
+    <li>Track your location</li>
+    <li>Show advertisements</li>
+    <li>Require account creation</li>
+    <li>Sell your data in any form</li>
+  </ul>
+
+  <h2>Children's privacy</h2>
+  <p>
+    PhaseOut is not directed at children under 13. We do not knowingly
+    collect any information from children. If you believe a child under 13
+    has used the app, please contact us and we will assist with data removal.
+  </p>
+
+  <h2>Changes to this policy</h2>
+  <p>
+    If we make material changes to this policy, we will update the date at
+    the top of this page and notify users via an in-app notice on the next
+    launch. Continued use of PhaseOut after a change constitutes acceptance
+    of the updated policy.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    If you have questions about this policy or how PhaseOut handles data,
+    please reach out.
+  </p>
+  <p>
+    <strong>Email:</strong>
+    <a href="mailto:privacy@brightdev.co.za">privacy@brightdev.co.za</a><br>
+    <strong>Developer:</strong> BrightDev<br>
+    <strong>Package:</strong> com.brightdev.phaseout
+  </p>
+</main>
+
+<footer>
+  <p>© 2026 BrightDev · PhaseOut · All rights reserved</p>
+  <p style="margin-top: 8px;">
+    <a href="mailto:privacy@brightdev.co.za">Contact</a>
+  </p>
+</footer>
+
+</body>
+</html>

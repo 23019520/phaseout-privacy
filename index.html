@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PhaseOut — Wind down. Sleep better.</title>
+  <meta name="description" content="PhaseOut automates your bedtime routine. Stop media, silence your phone, dim the screen — on a schedule you set once.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400;1,500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --white:      #FFFFFF;
+      --paper:      #F8F7F4;
+      --paper-2:    #F1EFE9;
+      --ink:        #0E0E0C;
+      --ink-60:     rgba(14,14,12,0.60);
+      --ink-35:     rgba(14,14,12,0.35);
+      --ink-12:     rgba(14,14,12,0.12);
+      --ink-06:     rgba(14,14,12,0.06);
+      --accent:     #0A7A6E;
+      --accent-lt:  #EBF5F3;
+      --accent-mid: #12A898;
+      --rule:       rgba(14,14,12,0.10);
+      --serif:      'Playfair Display', Georgia, serif;
+      --sans:       'Syne', system-ui, sans-serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--white);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.65;
+      overflow-x: hidden;
+    }
+
+    /* ══ NAV ══ */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 200;
+      height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 clamp(20px, 4vw, 48px);
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--rule);
+      transition: height 0.3s;
+    }
+
+    .nav-wordmark {
+      font-family: var(--serif);
+      font-size: 19px;
+      font-weight: 500;
+      color: var(--ink);
+      text-decoration: none;
+      letter-spacing: -0.3px;
+      flex-shrink: 0;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: clamp(14px, 2.5vw, 36px);
+      list-style: none;
+      align-items: center;
+    }
+
+    .nav-links a {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink-60);
+      text-decoration: none;
+      letter-spacing: 0.3px;
+      transition: color 0.2s;
+      white-space: nowrap;
+    }
+
+    .nav-links a:hover { color: var(--ink); }
+
+    .nav-dl {
+      background: var(--ink) !important;
+      color: var(--white) !important;
+      padding: 8px 18px !important;
+      border-radius: 6px;
+      letter-spacing: 0.4px;
+      transition: background 0.2s, transform 0.15s !important;
+    }
+
+    .nav-dl:hover { background: var(--accent) !important; transform: translateY(-1px); }
+
+    @media (max-width: 520px) { .nav-hide-sm { display: none; } }
+
+    /* ══ UNIVERSAL HERO ══
+       Two-column layout at ALL screen widths.
+       Left = static text. Right = phone + controls.
+       Hero fills exactly one viewport height, no scrolling needed.
+    ══════════════════════════════════════ */
+    .hero {
+      height: 100svh;
+      min-height: 520px;
+      display: grid;
+      grid-template-columns: 1fr min(48%, 520px);
+      padding-top: 62px;
+      max-width: 1300px;
+      margin: 0 auto;
+      /* full-bleed on small screens */
+      width: 100%;
+    }
+
+    /* ── LEFT PANEL ── */
+    .hero-left {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: clamp(20px, 4vh, 60px) clamp(14px, 2.5vw, 44px) clamp(20px, 4vh, 50px) clamp(20px, 4vw, 52px);
+      min-width: 0;
+    }
+
+    .hero-tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--accent);
+      border: 1px solid rgba(10,122,110,0.22);
+      background: var(--accent-lt);
+      padding: 4px 12px;
+      border-radius: 4px;
+      margin-bottom: clamp(12px, 2.2vh, 26px);
+      width: fit-content;
+      transition: color 0.5s, border-color 0.5s, background 0.5s;
+      opacity: 0;
+      animation: rise 0.6s 0.1s ease forwards;
+    }
+
+    .hero-h1 {
+      font-family: var(--serif);
+      font-size: clamp(28px, 4vw, 72px);
+      font-weight: 400;
+      line-height: 1.04;
+      letter-spacing: -1.2px;
+      color: var(--ink);
+      margin-bottom: clamp(10px, 1.8vh, 18px);
+      opacity: 0;
+      animation: rise 0.7s 0.2s ease forwards;
+    }
+
+    .hero-h1 em { font-style: italic; color: var(--accent); transition: color 0.5s; }
+
+    /* Screen label */
+    .hero-screen-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--accent);
+      transition: color 0.5s;
+      margin-bottom: 6px;
+      opacity: 0;
+      animation: rise 0.6s 0.28s ease forwards;
+    }
+
+    /* Description container with fixed height so nothing shifts */
+    .hero-desc-wrap {
+      position: relative;
+      height: clamp(72px, 10vh, 108px);
+      margin-bottom: clamp(16px, 2.8vh, 32px);
+      overflow: hidden;
+      opacity: 0;
+      animation: rise 0.7s 0.32s ease forwards;
+    }
+
+    .hero-desc {
+      position: absolute;
+      inset: 0;
+      font-size: clamp(12px, 1.3vw, 15px);
+      font-weight: 400;
+      color: var(--ink-60);
+      line-height: 1.75;
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+      pointer-events: none;
+    }
+
+    .hero-desc.active  { opacity: 1; transform: translateY(0); pointer-events: auto; }
+    .hero-desc.exit    { opacity: 0; transform: translateY(-12px); }
+
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 5px 10px;
+      font-size: 11px;
+      color: var(--ink-35);
+      letter-spacing: 0.2px;
+      margin-top: auto;
+      padding-top: clamp(10px, 1.5vh, 20px);
+      opacity: 0;
+      animation: rise 0.7s 0.5s ease forwards;
+    }
+
+    .hero-meta-sep { color: var(--ink-12); }
+
+    /* ── RIGHT PANEL ── */
+    .hero-right {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: clamp(14px, 2.5vh, 36px) clamp(14px, 3vw, 40px) clamp(14px, 2.5vh, 28px);
+      gap: clamp(12px, 1.8vh, 20px);
+      opacity: 0;
+      animation: rise 0.8s 0.25s ease forwards;
+    }
+
+    /* Phone mockup */
+    .hero-phone {
+      flex-shrink: 0;
+      width: min(185px, 36vw);
+      height: min(375px, 73vw);
+      background: var(--ink);
+      border-radius: min(32px, 6.5vw);
+      position: relative;
+      box-shadow:
+        0 0 0 1.5px rgba(255,255,255,0.10) inset,
+        0 26px 52px rgba(14,14,12,0.22),
+        0 6px 16px rgba(14,14,12,0.10);
+      overflow: hidden;
+    }
+
+    .hero-phone::before {
+      content: '';
+      position: absolute;
+      top: 9px; left: 50%;
+      transform: translateX(-50%);
+      width: 50px; height: 14px;
+      background: var(--ink);
+      border-radius: 0 0 9px 9px;
+      z-index: 10;
+    }
+
+    .hero-phone-inner {
+      position: absolute;
+      inset: 3px;
+      border-radius: calc(min(32px, 6.5vw) - 3px);
+      overflow: hidden;
+      background: #111827;
+    }
+
+    /* Stacked images, fade between them */
+    .phone-slide-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 0.45s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    .phone-slide-img.active { opacity: 1; }
+
+    /* Controls */
+    .hero-controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: clamp(8px, 1.4vh, 14px);
+      width: 100%;
+      max-width: 300px;
+    }
+
+    .hero-nav-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+
+    .hero-dots { display: flex; gap: 6px; align-items: center; }
+
+    .hero-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--ink-12);
+      cursor: pointer;
+      border: none; padding: 0; flex-shrink: 0;
+      transition: background 0.4s, width 0.4s, border-radius 0.4s;
+    }
+
+    .hero-dot.active { background: var(--accent); width: 20px; border-radius: 4px; }
+
+    /* Accent-coloured Next button */
+    .hero-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--accent);
+      color: #fff;
+      font-family: var(--sans);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      padding: 10px 18px;
+      border-radius: 7px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.5s, transform 0.2s, box-shadow 0.5s;
+      box-shadow: 0 3px 12px rgba(10,122,110,0.28);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .hero-btn:hover  { transform: translateY(-2px); }
+    .hero-btn:active { transform: scale(0.97); }
+
+    /* Download row — replaces Next button on last slide */
+    .hero-dl-row {
+      display: none;
+      width: 100%;
+      gap: 8px;
+    }
+
+    .hero-dl-row.visible { display: flex; }
+
+    .hero-dl-full {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      background: var(--ink);
+      color: var(--white);
+      font-family: var(--sans);
+      font-size: 13px;
+      font-weight: 700;
+      padding: 11px 16px;
+      border-radius: 7px;
+      text-decoration: none;
+      transition: background 0.25s;
+      white-space: nowrap;
+    }
+
+    .hero-dl-full:hover { background: var(--accent); }
+
+    .hero-feat-link {
+      display: flex;
+      align-items: center;
+      padding: 11px 15px;
+      border-radius: 7px;
+      border: 1px solid var(--ink-12);
+      color: var(--ink-60);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      font-family: var(--sans);
+      transition: color 0.2s, border-color 0.2s;
+      white-space: nowrap;
+    }
+
+    .hero-feat-link:hover { color: var(--ink); border-color: rgba(14,14,12,0.25); }
+
+    /* ══ STATS STRIPE ══ */
+    .stripe { background: var(--paper); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+
+    .stripe-inner {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 0 clamp(20px, 4vw, 48px);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background: var(--rule);
+    }
+
+    @media (max-width: 480px) { .stripe-inner { grid-template-columns: 1fr 1fr; } }
+
+    .stripe-item { background: var(--paper); padding: 28px 20px; text-align: center; }
+
+    .stripe-num {
+      font-family: var(--serif);
+      font-size: 32px;
+      font-weight: 400;
+      color: var(--ink);
+      letter-spacing: -1px;
+      display: block;
+      line-height: 1;
+      margin-bottom: 5px;
+    }
+
+    .stripe-label { font-size: 12px; color: var(--ink-35); letter-spacing: 0.3px; }
+
+    /* ══ FEATURES ══ */
+    .features-section {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 90px clamp(20px, 4vw, 48px);
+    }
+
+    .section-eyebrow {
+      font-size: 11px; font-weight: 600; letter-spacing: 1.8px;
+      text-transform: uppercase; color: var(--accent);
+      display: block; margin-bottom: 14px;
+    }
+
+    .section-h2 {
+      font-family: var(--serif);
+      font-size: clamp(28px, 4vw, 46px);
+      font-weight: 400; line-height: 1.10;
+      letter-spacing: -0.8px; color: var(--ink); margin-bottom: 14px;
+    }
+
+    .section-h2 em { font-style: italic; color: var(--accent); }
+
+    .section-lead {
+      font-size: 15px; color: var(--ink-60);
+      max-width: 480px; line-height: 1.75; margin-bottom: 52px;
+    }
+
+    .feat-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px; background: var(--rule);
+      border: 1px solid var(--rule); border-radius: 14px; overflow: hidden;
+    }
+
+    @media (max-width: 680px) { .feat-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 420px) { .feat-grid { grid-template-columns: 1fr; } }
+
+    .feat-cell {
+      background: var(--white);
+      padding: 30px 26px;
+      position: relative; overflow: hidden;
+      transition: background 0.25s;
+    }
+
+    .feat-cell:hover { background: var(--paper); }
+
+    .feat-cell::before {
+      content: ''; position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-mid));
+      opacity: 0; transition: opacity 0.25s;
+    }
+
+    .feat-cell:hover::before { opacity: 1; }
+
+    .feat-numeral { font-family: var(--serif); font-size: 11px; color: var(--ink-35); display: block; margin-bottom: 14px; }
+    .feat-title   { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
+    .feat-body    { font-size: 13px; color: var(--ink-60); line-height: 1.65; }
+
+    /* ══ HOW IT WORKS ══ */
+    .how-section { background: var(--paper); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+
+    .how-inner {
+      max-width: 1300px; margin: 0 auto;
+      padding: 90px clamp(20px, 4vw, 48px);
+      display: grid; grid-template-columns: 1fr 1fr; gap: 72px; align-items: start;
+    }
+
+    @media (max-width: 720px) { .how-inner { grid-template-columns: 1fr; gap: 40px; } }
+
+    .steps-list { list-style: none; display: flex; flex-direction: column; }
+
+    .step-item {
+      display: flex; gap: 20px;
+      padding: 22px 0; border-bottom: 1px solid var(--rule);
+      transition: padding-left 0.25s;
+    }
+
+    .step-item:first-child { padding-top: 0; }
+    .step-item:last-child  { border-bottom: none; padding-bottom: 0; }
+    .step-item:hover       { padding-left: 6px; }
+
+    .step-num { font-family: var(--serif); font-size: 12px; color: var(--ink-35); width: 26px; flex-shrink: 0; padding-top: 2px; }
+    .step-h   { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+    .step-p   { font-size: 13px; color: var(--ink-60); line-height: 1.65; }
+
+    .tl-card {
+      background: var(--white); border: 1px solid var(--rule);
+      border-radius: 14px; padding: 26px; position: sticky; top: 80px;
+    }
+
+    @media (max-width: 720px) { .tl-card { position: static; } }
+
+    .tl-title { font-size: 10px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-35); margin-bottom: 22px; }
+
+    .tl-row { display: flex; align-items: flex-start; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--ink-06); }
+    .tl-row:last-child { border-bottom: none; }
+
+    .tl-time { font-family: var(--serif); font-size: 13px; color: var(--ink-35); width: 68px; flex-shrink: 0; }
+    .tl-dot-col { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+    .tl-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .tl-line { width: 1px; flex: 1; min-height: 18px; background: var(--rule); margin-top: 4px; }
+    .tl-event     { font-size: 13px; color: var(--ink); font-weight: 500; line-height: 1.5; }
+    .tl-event-sub { font-size: 11px; color: var(--ink-35); margin-top: 2px; }
+
+    /* ══ TECH STRIP ══ */
+    .tech-strip {
+      max-width: 1300px; margin: 0 auto;
+      padding: 38px clamp(20px, 4vw, 48px);
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+
+    .tech-label { font-size: 11px; color: var(--ink-35); margin-right: 4px; font-weight: 500; }
+
+    .tech-tag {
+      font-size: 12px; font-weight: 500; color: var(--ink-60);
+      background: var(--paper); border: 1px solid var(--rule);
+      border-radius: 100px; padding: 4px 13px;
+    }
+
+    /* ══ ABOUT ══ */
+    .about-section {
+      max-width: 1300px; margin: 0 auto;
+      padding: 90px clamp(20px, 4vw, 48px);
+      display: grid; grid-template-columns: 1fr 1fr; gap: 72px; align-items: center;
+    }
+
+    @media (max-width: 720px) { .about-section { grid-template-columns: 1fr; gap: 40px; } }
+
+    .author-card { background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; padding: 34px; }
+
+    .author-initials {
+      width: 48px; height: 48px; background: var(--ink); border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--serif); font-size: 20px; color: var(--white); margin-bottom: 16px;
+    }
+
+    .author-name   { font-family: var(--serif); font-size: 20px; color: var(--ink); letter-spacing: -0.4px; margin-bottom: 2px; }
+    .author-handle { font-size: 12px; color: var(--ink-35); margin-bottom: 14px; }
+    .author-bio    { font-size: 13px; color: var(--ink-60); line-height: 1.75; margin-bottom: 20px; }
+    .author-links  { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .author-link {
+      font-size: 12px; font-weight: 500; color: var(--ink-60);
+      border: 1px solid var(--rule); border-radius: 5px; padding: 5px 13px;
+      text-decoration: none; transition: color 0.2s, border-color 0.2s, background 0.2s;
+    }
+
+    .author-link:hover { color: var(--accent); border-color: rgba(10,122,110,0.28); background: var(--accent-lt); }
+
+    .priv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 34px; }
+
+    @media (max-width: 460px) { .priv-grid { grid-template-columns: 1fr; } }
+
+    .priv-cell { border: 1px solid var(--rule); border-radius: 10px; padding: 16px; transition: border-color 0.2s, background 0.2s; }
+    .priv-cell:hover { border-color: rgba(10,122,110,0.25); background: var(--accent-lt); }
+    .priv-cell-title { font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 3px; }
+    .priv-cell-desc  { font-size: 12px; color: var(--ink-35); line-height: 1.55; }
+
+    /* ══ DOWNLOAD ══ */
+    .download-section { background: var(--ink); position: relative; overflow: hidden; }
+
+    .dl-noise {
+      position: absolute; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+    }
+
+    .download-inner {
+      max-width: 1300px; margin: 0 auto;
+      padding: 90px clamp(20px, 4vw, 48px);
+      display: grid; grid-template-columns: 1fr 1fr; gap: 72px; align-items: center;
+      position: relative; z-index: 2;
+    }
+
+    @media (max-width: 720px) { .download-inner { grid-template-columns: 1fr; gap: 40px; } }
+
+    .dl-h2 {
+      font-family: var(--serif);
+      font-size: clamp(30px, 4vw, 52px);
+      font-weight: 400; line-height: 1.06;
+      letter-spacing: -1.2px; color: var(--white); margin-bottom: 16px;
+    }
+
+    .dl-h2 em { font-style: italic; color: var(--accent-mid); }
+
+    .dl-sub { font-size: 14px; color: rgba(255,255,255,0.45); line-height: 1.75; max-width: 360px; margin-bottom: 34px; }
+    .dl-checklist { display: flex; flex-direction: column; gap: 10px; }
+    .dl-check { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; color: rgba(255,255,255,0.50); line-height: 1.5; }
+
+    .dl-check-tick {
+      width: 15px; height: 15px; border-radius: 50%;
+      background: rgba(18,168,152,0.20); border: 1px solid rgba(18,168,152,0.40);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 1px;
+    }
+
+    .dl-check-tick::after {
+      content: ''; width: 4px; height: 3px;
+      border-left: 1.5px solid var(--accent-mid); border-bottom: 1.5px solid var(--accent-mid);
+      transform: rotate(-45deg) translateY(-1px);
+    }
+
+    .dl-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); border-radius: 16px; padding: 30px; }
+
+    .dl-platform-row {
+      display: flex; align-items: center; gap: 14px;
+      margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+
+    .dl-platform-icon {
+      width: 42px; height: 42px;
+      background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    }
+
+    .dl-platform-icon svg { width: 20px; height: 20px; fill: rgba(255,255,255,0.65); }
+    .dl-platform-name { font-size: 15px; font-weight: 600; color: var(--white); }
+    .dl-platform-req  { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 1px; }
+
+    .dl-btn {
+      display: flex; align-items: center; justify-content: space-between; width: 100%;
+      background: var(--white); color: var(--ink); font-family: var(--sans);
+      font-size: 14px; font-weight: 700; padding: 13px 20px; border-radius: 10px;
+      text-decoration: none; transition: background 0.2s, transform 0.2s; margin-bottom: 10px;
+    }
+
+    .dl-btn:hover { background: var(--accent-lt); color: var(--accent); transform: translateY(-2px); }
+
+    .dl-soon-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 13px; border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 8px; font-size: 12px; color: rgba(255,255,255,0.30);
+    }
+
+    .dl-soon-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.20); flex-shrink: 0; }
+
+    .dl-update-note {
+      margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.07);
+      font-size: 12px; color: rgba(255,255,255,0.30); line-height: 1.7;
+    }
+
+    .dl-update-note a { color: var(--accent-mid); text-underline-offset: 3px; }
+
+    /* ══ FOOTER ══ */
+    footer { background: var(--paper); border-top: 1px solid var(--rule); padding: 38px clamp(20px, 4vw, 48px); }
+
+    .footer-inner {
+      max-width: 1300px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+    }
+
+    .footer-wordmark { font-family: var(--serif); font-size: 16px; color: var(--ink-60); text-decoration: none; }
+    .footer-links { display: flex; gap: 22px; list-style: none; flex-wrap: wrap; }
+    .footer-links a { font-size: 13px; color: var(--ink-35); text-decoration: none; transition: color 0.2s; }
+    .footer-links a:hover { color: var(--ink); }
+    .footer-copy { font-size: 12px; color: var(--ink-35); }
+
+    /* ══ SCROLL REVEAL ══ */
+    .reveal { opacity: 0; transform: translateY(22px); transition: opacity 0.6s ease, transform 0.6s ease; }
+    .reveal.in { opacity: 1; transform: none; }
+    .reveal-d1 { transition-delay: 0.08s; }
+    .reveal-d2 { transition-delay: 0.16s; }
+    .reveal-d3 { transition-delay: 0.24s; }
+    .reveal-d4 { transition-delay: 0.32s; }
+    .reveal-d5 { transition-delay: 0.40s; }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav id="mainNav">
+  <a href="#" class="nav-wordmark">PhaseOut</a>
+  <ul class="nav-links">
+    <li class="nav-hide-sm"><a href="#features">Features</a></li>
+    <li class="nav-hide-sm"><a href="#how-it-works">How it works</a></li>
+    <li class="nav-hide-sm"><a href="#about">About</a></li>
+    <li><a href="#download" class="nav-dl">Download APK</a></li>
+  </ul>
+</nav>
+
+<!-- ══ UNIVERSAL HERO ══ -->
+<section class="hero">
+
+  <!-- LEFT: always-visible, never moves -->
+  <div class="hero-left">
+    <div class="hero-tag" id="heroTag">Sleep automation</div>
+
+    <h1 class="hero-h1">Wind down.<br><em id="heroEm">Sleep better.</em></h1>
+
+    <div class="hero-screen-label" id="heroScreenLabel">Dashboard</div>
+
+    <!-- Fixed-height description box — only text fades in/out, box never shifts layout -->
+    <div class="hero-desc-wrap">
+      <div class="hero-desc active" data-idx="0">
+        PhaseOut automates your bedtime routine &mdash; stopping music, silencing your phone, and dimming your screen &mdash; on a schedule you set once.
+      </div>
+      <div class="hero-desc" data-idx="1">
+        Pick your bedtime, choose which nights it repeats, then toggle exactly what happens &mdash; music off, Do Not Disturb on, screen dimmed. Takes under a minute.
+      </div>
+      <div class="hero-desc" data-idx="2">
+        Per-app time breakdowns, daily limits, and weekly trend charts &mdash; so you can see the habits worth changing, not just feel guilty about them.
+      </div>
+      <div class="hero-desc" data-idx="3">
+        Start a focus session and block every app except the ones you need. A gentle overlay appears if you wander &mdash; no harsh penalties, just a nudge back on track.
+      </div>
+    </div>
+
+    <div class="hero-meta">
+      <span>Version 1.0</span>
+      <span class="hero-meta-sep">/</span>
+      <span>Free forever</span>
+      <span class="hero-meta-sep">/</span>
+      <span>No account</span>
+      <span class="hero-meta-sep">/</span>
+      <span>Android 8.0+</span>
+    </div>
+  </div>
+
+  <!-- RIGHT: phone + carousel controls -->
+  <div class="hero-right">
+
+    <div class="hero-phone">
+      <div class="hero-phone-inner">
+        <img class="phone-slide-img active" src="images/one.jpg"   alt="Dashboard screen">
+        <img class="phone-slide-img"        src="images/two.jpg"   alt="Schedule screen">
+        <img class="phone-slide-img"        src="images/four.jpg"  alt="Usage analytics screen">
+        <img class="phone-slide-img"        src="images/three.jpg" alt="Focus mode screen">
+      </div>
+    </div>
+
+    <div class="hero-controls">
+
+      <div class="hero-nav-row">
+        <div class="hero-dots" id="heroDots">
+          <button class="hero-dot active" onclick="heroGoTo(0)"></button>
+          <button class="hero-dot"        onclick="heroGoTo(1)"></button>
+          <button class="hero-dot"        onclick="heroGoTo(2)"></button>
+          <button class="hero-dot"        onclick="heroGoTo(3)"></button>
+        </div>
+
+        <!-- Next button — hides on last slide -->
+        <button class="hero-btn" id="heroNextBtn" onclick="heroNext()">Next &rarr;</button>
+      </div>
+
+      <!-- Download row — slides up on last slide, replacing Next -->
+      <div class="hero-dl-row" id="heroDlRow">
+        <a href="#download" class="hero-dl-full">Download APK &darr;</a>
+        <a href="#features" class="hero-feat-link">See features</a>
+      </div>
+
+    </div>
+
+  </div>
+
+</section>
+
+<!-- ══ STATS STRIPE ══ -->
+<div class="stripe">
+  <div class="stripe-inner">
+    <div class="stripe-item reveal"><span class="stripe-num">6</span><span class="stripe-label">Core features</span></div>
+    <div class="stripe-item reveal reveal-d1"><span class="stripe-num">14</span><span class="stripe-label">App screens</span></div>
+    <div class="stripe-item reveal reveal-d2"><span class="stripe-num">0</span><span class="stripe-label">Ads or trackers</span></div>
+    <div class="stripe-item reveal reveal-d3"><span class="stripe-num">Free</span><span class="stripe-label">No account ever</span></div>
+  </div>
+</div>
+
+<!-- ══ FEATURES ══ -->
+<section class="features-section" id="features">
+  <span class="section-eyebrow reveal">What it does</span>
+  <h2 class="section-h2 reveal reveal-d1">Everything your<br>bedtime <em>needs.</em></h2>
+  <p class="section-lead reveal reveal-d2">Six features that work together to make winding down effortless &mdash; all running quietly in the background, even when the app is fully closed.</p>
+
+  <div class="feat-grid">
+    <div class="feat-cell reveal"><span class="feat-numeral">01</span><div class="feat-title">Stops your music</div><p class="feat-body">Stops audio from any app at your set bedtime &mdash; Spotify, YouTube, podcasts, all of it.</p></div>
+    <div class="feat-cell reveal reveal-d1"><span class="feat-numeral">02</span><div class="feat-title">Do Not Disturb</div><p class="feat-body">Enables DND at bedtime and restores your normal settings in the morning automatically.</p></div>
+    <div class="feat-cell reveal reveal-d2"><span class="feat-numeral">03</span><div class="feat-title">Dims your screen</div><p class="feat-body">Reduces brightness to minimum at bedtime. Restored each morning so you start fresh.</p></div>
+    <div class="feat-cell reveal reveal-d3"><span class="feat-numeral">04</span><div class="feat-title">Morning alarm</div><p class="feat-body">PhaseOut fires your alarm and restores all settings &mdash; brightness, sound, everything.</p></div>
+    <div class="feat-cell reveal reveal-d4"><span class="feat-numeral">05</span><div class="feat-title">Usage analytics</div><p class="feat-body">Per-app time tracking, daily limits, and weekly trend charts at a glance.</p></div>
+    <div class="feat-cell reveal reveal-d5"><span class="feat-numeral">06</span><div class="feat-title">Focus mode</div><p class="feat-body">Block every app except the ones you choose. A gentle overlay nudges you back on track.</p></div>
+  </div>
+</section>
+
+<!-- ══ HOW IT WORKS ══ -->
+<section class="how-section" id="how-it-works">
+  <div class="how-inner">
+    <div>
+      <span class="section-eyebrow reveal">How it works</span>
+      <h2 class="section-h2 reveal reveal-d1">Set it once.<br><em>Runs every night.</em></h2>
+      <p class="section-lead reveal reveal-d2">PhaseOut runs as a background service &mdash; reliably, even when the app is fully closed.</p>
+
+      <ol class="steps-list reveal reveal-d3">
+        <li class="step-item"><span class="step-num">01</span><div><div class="step-h">Create a bedtime schedule</div><p class="step-p">Choose a time, the days it repeats, and which actions to run. Takes under a minute.</p></div></li>
+        <li class="step-item"><span class="step-num">02</span><div><div class="step-h">Get a heads-up reminder</div><p class="step-p">30 minutes before, PhaseOut sends a gentle notification so you can wrap up.</p></div></li>
+        <li class="step-item"><span class="step-num">03</span><div><div class="step-h">Bedtime runs automatically</div><p class="step-p">Audio stops, DND kicks in, screen dims &mdash; all without you touching your phone.</p></div></li>
+        <li class="step-item"><span class="step-num">04</span><div><div class="step-h">Morning alarm restores everything</div><p class="step-p">Your alarm fires, brightness and sound return to normal. Your day starts clean.</p></div></li>
+      </ol>
+    </div>
+
+    <div class="reveal reveal-d2">
+      <div class="tl-card">
+        <div class="tl-title">Tonight&rsquo;s timeline</div>
+        <div class="tl-row">
+          <span class="tl-time">10:00 PM</span>
+          <div class="tl-dot-col"><div class="tl-dot" style="background:rgba(14,14,12,0.20);border:1.5px solid rgba(14,14,12,0.18);"></div><div class="tl-line"></div></div>
+          <div><div class="tl-event">Reminder sent</div><div class="tl-event-sub">30 min heads-up notification</div></div>
+        </div>
+        <div class="tl-row">
+          <span class="tl-time">10:30 PM</span>
+          <div class="tl-dot-col"><div class="tl-dot" style="background:var(--accent);border:1.5px solid var(--accent);"></div><div class="tl-line"></div></div>
+          <div><div class="tl-event">Bedtime runs</div><div class="tl-event-sub">Music off &middot; DND on &middot; Screen dimmed</div></div>
+        </div>
+        <div class="tl-row">
+          <span class="tl-time" style="font-style:italic;opacity:0.4;">&#8212;&#8212;</span>
+          <div class="tl-dot-col"><div class="tl-dot" style="background:var(--paper-2);border:1.5px dashed var(--ink-35);"></div><div class="tl-line"></div></div>
+          <div><div class="tl-event" style="color:var(--ink-35);">You sleep</div><div class="tl-event-sub">Phone stays quiet all night</div></div>
+        </div>
+        <div class="tl-row">
+          <span class="tl-time">7:00 AM</span>
+          <div class="tl-dot-col"><div class="tl-dot" style="background:#D97706;border:1.5px solid #D97706;"></div></div>
+          <div><div class="tl-event">Alarm fires</div><div class="tl-event-sub">Brightness restored &middot; DND off &middot; Normal sound</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Tech tags -->
+<div class="tech-strip reveal">
+  <span class="tech-label">Built with</span>
+  <span class="tech-tag">Flutter 3.x</span>
+  <span class="tech-tag">Dart 3.x</span>
+  <span class="tech-tag">Firebase</span>
+  <span class="tech-tag">Android 8.0+</span>
+  <span class="tech-tag">On-device ML</span>
+  <span class="tech-tag">sqflite</span>
+  <span class="tech-tag">Made in South Africa</span>
+</div>
+
+<div style="height:1px;background:var(--rule);max-width:1300px;margin:0 auto;"></div>
+
+<!-- ══ ABOUT ══ -->
+<section class="about-section" id="about">
+  <div class="author-card reveal">
+    <div class="author-initials">B</div>
+    <div class="author-name">BrightDev</div>
+    <div class="author-handle">brightdev.co.za &mdash; South Africa</div>
+    <p class="author-bio">Independent developer building tools that help people use their phones more intentionally. PhaseOut is free, private, and built to last &mdash; no subscriptions, no data collection, no compromises.</p>
+    <div class="author-links">
+      <a href="https://github.com/brightdev/phaseout" class="author-link" target="_blank">GitHub</a>
+      <a href="mailto:privacy@brightdev.co.za" class="author-link">Contact</a>
+      <a href="privacy_policy.html" class="author-link">Privacy Policy</a>
+    </div>
+  </div>
+
+  <div>
+    <span class="section-eyebrow reveal">Privacy first</span>
+    <h2 class="section-h2 reveal reveal-d1">Your data stays<br>on <em>your phone.</em></h2>
+    <p class="section-lead reveal reveal-d2">No account needed. No server. No ads. Everything runs locally on your device.</p>
+    <div class="priv-grid reveal reveal-d3">
+      <div class="priv-cell"><div class="priv-cell-title">No account</div><div class="priv-cell-desc">Open and use immediately. No sign-up ever required.</div></div>
+      <div class="priv-cell"><div class="priv-cell-title">No data sent</div><div class="priv-cell-desc">Schedules and usage stats live entirely on-device.</div></div>
+      <div class="priv-cell"><div class="priv-cell-title">Free forever</div><div class="priv-cell-desc">No premium plan, no paywall, no subscription.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ DOWNLOAD ══ -->
+<section class="download-section" id="download">
+  <div class="dl-noise"></div>
+  <div class="download-inner">
+    <div class="reveal">
+      <span class="section-eyebrow" style="color:var(--accent-mid);">Download</span>
+      <h2 class="dl-h2">Get PhaseOut.<br><em>Sleep better tonight.</em></h2>
+      <p class="dl-sub">Free, no account, no ads, no data collection. Sideload directly &mdash; no Play Store needed.</p>
+      <div class="dl-checklist">
+        <div class="dl-check"><div class="dl-check-tick"></div><span>Requires Android 8.0 or higher (API 26+)</span></div>
+        <div class="dl-check"><div class="dl-check-tick"></div><span>Enable &ldquo;Install from unknown sources&rdquo; in Settings</span></div>
+        <div class="dl-check"><div class="dl-check-tick"></div><span>Open the downloaded APK to install</span></div>
+      </div>
+    </div>
+
+    <div class="reveal reveal-d2">
+      <div class="dl-card">
+        <div class="dl-platform-row">
+          <div class="dl-platform-icon">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 18c0 .55.45 1 1 1h1v3.5c0 .83.67 1.5 1.5 1.5S11 23.33 11 22.5V19h2v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8C2.67 8 2 8.67 2 9.5v7c0 .83.67 1.5 1.5 1.5S5 17.33 5 16.5v-7C5 8.67 4.33 8 3.5 8zm17 0c-.83 0-1.5.67-1.5 1.5v7c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5zm-4.97-5.84l1.3-1.3c.2-.2.2-.51 0-.71-.2-.2-.51-.2-.71 0l-1.48 1.48A5.84 5.84 0 0 0 12 1.5c-.69 0-1.35.12-1.96.33L8.56.35c-.2-.2-.51-.2-.71 0-.2.2-.2.51 0 .71l1.3 1.3C7.34 3.06 6 5.07 6 7.38V8h12v-.62c0-2.31-1.34-4.32-3.47-5.22zM10 5.5H9V4.5h1v1zm5 0h-1V4.5h1v1z"/>
+            </svg>
+          </div>
+          <div>
+            <div class="dl-platform-name">Android</div>
+            <div class="dl-platform-req">Requires Android 8.0+ &middot; API level 26+</div>
+          </div>
+        </div>
+        <a href="phaseout-v1.0.apk" class="dl-btn">
+          <span>Download APK &mdash; v1.0</span>
+          <span style="font-size:16px;font-weight:300;">&darr;</span>
+        </a>
+        <div class="dl-soon-row"><div class="dl-soon-dot"></div>Play Store &mdash; coming soon</div>
+        <p class="dl-update-note">Watch the <a href="https://github.com/brightdev/phaseout/releases" target="_blank">GitHub releases page</a> for changelogs and new builds.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="footer-inner">
+    <a href="#" class="footer-wordmark">PhaseOut</a>
+    <ul class="footer-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="privacy_policy.html">Privacy Policy</a></li>
+      <li><a href="https://github.com/brightdev/phaseout" target="_blank">GitHub</a></li>
+      <li><a href="mailto:privacy@brightdev.co.za">Contact</a></li>
+    </ul>
+    <span class="footer-copy">&copy; 2026 BrightDev &middot; Built in South Africa</span>
+  </div>
+</footer>
+
+<script>
+var THEMES = [
+  { accent:'#0A7A6E', accentLt:'#EBF5F3', accentMid:'#12A898',
+    tagBorder:'rgba(10,122,110,0.22)',  btnShadow:'rgba(10,122,110,0.28)',  label:'Dashboard' },
+  { accent:'#2B5BA8', accentLt:'#EBF0FA', accentMid:'#4A80D4',
+    tagBorder:'rgba(43,91,168,0.22)',   btnShadow:'rgba(43,91,168,0.28)',   label:'Bedtime Schedule' },
+  { accent:'#6B35B0', accentLt:'#F2EBF9', accentMid:'#9B6AD4',
+    tagBorder:'rgba(107,53,176,0.22)',  btnShadow:'rgba(107,53,176,0.28)', label:'Usage Analytics' },
+  { accent:'#C2580A', accentLt:'#FEF3E8', accentMid:'#E87A2A',
+    tagBorder:'rgba(194,88,10,0.22)',   btnShadow:'rgba(194,88,10,0.28)',   label:'Focus Mode' }
+];
+
+var current   = 0;
+var total     = 4;
+var imgs      = document.querySelectorAll('.phone-slide-img');
+var descs     = document.querySelectorAll('.hero-desc');
+var dots      = document.querySelectorAll('.hero-dot');
+var nextBtn   = document.getElementById('heroNextBtn');
+var dlRow     = document.getElementById('heroDlRow');
+var root      = document.documentElement;
+
+function applyTheme(idx) {
+  var t = THEMES[idx];
+  root.style.setProperty('--accent',     t.accent);
+  root.style.setProperty('--accent-lt',  t.accentLt);
+  root.style.setProperty('--accent-mid', t.accentMid);
+
+  var tag = document.getElementById('heroTag');
+  tag.style.color       = t.accent;
+  tag.style.borderColor = t.tagBorder;
+  tag.style.background  = t.accentLt;
+
+  document.getElementById('heroEm').style.color = t.accent;
+
+  var lbl = document.getElementById('heroScreenLabel');
+  lbl.style.color  = t.accent;
+  lbl.textContent  = t.label;
+
+  nextBtn.style.background = t.accent;
+  nextBtn.style.boxShadow  = '0 3px 12px ' + t.btnShadow;
+
+  dots.forEach(function(d, i) {
+    d.style.background = i === idx ? t.accent : '';
+    d.classList.toggle('active', i === idx);
+  });
+}
+
+function heroGoTo(idx) {
+  if (idx === current) return;
+  var prev = current;
+  current  = idx;
+
+  /* swap phone image */
+  imgs[prev].classList.remove('active');
+  imgs[idx].classList.add('active');
+
+  /* swap description */
+  descs[prev].classList.remove('active');
+  descs[prev].classList.add('exit');
+  setTimeout(function() { descs[prev].classList.remove('exit'); }, 440);
+  descs[idx].classList.add('active');
+
+  /* last slide: hide Next, show Download */
+  if (idx === total - 1) {
+    nextBtn.style.display = 'none';
+    dlRow.classList.add('visible');
+  } else {
+    nextBtn.style.display = '';
+    dlRow.classList.remove('visible');
+  }
+
+  applyTheme(idx);
+}
+
+function heroNext() {
+  if (current < total - 1) heroGoTo(current + 1);
+}
+
+window.heroGoTo = heroGoTo;
+window.heroNext = heroNext;
+
+/* Touch swipe on phone */
+(function() {
+  var phone = document.querySelector('.hero-phone');
+  var sx = 0, sy = 0;
+  phone.addEventListener('touchstart', function(e) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+  phone.addEventListener('touchend', function(e) {
+    var dx = e.changedTouches[0].clientX - sx;
+    var dy = e.changedTouches[0].clientY - sy;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 36) {
+      if (dx < 0 && current < total - 1) heroGoTo(current + 1);
+      if (dx > 0 && current > 0)         heroGoTo(current - 1);
+    }
+  }, { passive: true });
+})();
+
+/* Init */
+applyTheme(0);
+
+/* Scroll reveal */
+(function() {
+  var els = document.querySelectorAll('.reveal');
+  var io  = new IntersectionObserver(function(entries) {
+    entries.forEach(function(e) {
+      if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+    });
+  }, { threshold: 0.12 });
+  els.forEach(function(el) { io.observe(el); });
+})();
+
+/* Nav shrink */
+window.addEventListener('scroll', function() {
+  document.getElementById('mainNav').style.height = window.scrollY > 50 ? '52px' : '62px';
+}, { passive: true });
+</script>
+
+</body>
+</html>
