@@ -1,10 +1,20 @@
 // ─────────────────────────────────────────────────────────────
-//  lib/db/database_helper.dart
+//  lib/db/database_helper.dart  (UPGRADED — v5)
 //  PhaseOut — sqflite database access layer
+//
+//  v5 changes:
+//  - dbVersion bumped to 5
+//  - _onCreate runs migrateV4ToV5 for fresh installs
+//  - _onUpgrade handles oldVersion < 5
+//  - Added day_profiles CRUD:
+//      upsertDayProfile(), getDayProfile(), getAllDayProfiles()
+//  - getBatterySnapshots() unchanged (screen_on_seconds flows
+//    automatically through BatterySnapshotModel.fromMap)
 // ─────────────────────────────────────────────────────────────
 
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import '../models/day_profile_model.dart';
 import '../models/schedule_model.dart';
 import '../models/usage_event_model.dart';
 import '../utils/constants.dart';
@@ -39,28 +49,27 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version:   AppConstants.dbVersion, // now 4
+      version:   AppConstants.dbVersion, // must be 5
       onCreate:  _onCreate,
       onUpgrade: _onUpgrade,
     );
   }
 
-  // Called on fresh install — build all tables at current version
   Future<void> _onCreate(Database db, int version) async {
     AppLogger.i(_tag, 'Creating database schema v$version');
     await DatabaseMigrations.createV1(db);
     if (version >= 2) await DatabaseMigrations.migrateV1ToV2(db);
     if (version >= 3) await DatabaseMigrations.migrateV2ToV3(db);
-    // v4 columns (wake_hour, wake_minute) are baked into _createSchedules
-    // in migrations.dart so no extra call needed for fresh installs.
+    // v4 wake columns already baked into _createSchedules
+    if (version >= 5) await DatabaseMigrations.migrateV4ToV5(db);
   }
 
-  // Called when existing install upgrades from an older version
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     AppLogger.i(_tag, 'Upgrading database v$oldVersion → v$newVersion');
     if (oldVersion < 2) await DatabaseMigrations.migrateV1ToV2(db);
     if (oldVersion < 3) await DatabaseMigrations.migrateV2ToV3(db);
     if (oldVersion < 4) await DatabaseMigrations.migrateV3ToV4(db);
+    if (oldVersion < 5) await DatabaseMigrations.migrateV4ToV5(db);
   }
 
   // ── Close (testing only) ───────────────────────────────────
@@ -182,7 +191,8 @@ class DatabaseHelper {
         usage.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
-      AppLogger.d(_tag, 'Usage saved: ${usage.packageName} = ${usage.usageMinutes}m');
+      AppLogger.d(_tag,
+          'Usage saved: ${usage.packageName} = ${usage.usageMinutes}m');
     } catch (e, st) {
       AppLogger.e(_tag, 'Failed to insert/update usage', e, st);
       rethrow;
@@ -220,7 +230,8 @@ class DatabaseHelper {
       if (maps.isEmpty) return null;
       return AppUsageModel.fromMap(maps.first);
     } catch (e, st) {
-      AppLogger.e(_tag, 'Failed to get usage for $packageName on $date', e, st);
+      AppLogger.e(_tag,
+          'Failed to get usage for $packageName on $date', e, st);
       return null;
     }
   }
@@ -251,7 +262,8 @@ class DatabaseHelper {
         );
       }
 
-      AppLogger.i(_tag, 'Limit set: $packageName = ${limitMinutes}m/day');
+      AppLogger.i(_tag,
+          'Limit set: $packageName = ${limitMinutes}m/day');
     } catch (e, st) {
       AppLogger.e(_tag, 'Failed to set limit for $packageName', e, st);
       rethrow;
@@ -363,6 +375,75 @@ class DatabaseHelper {
   }
 
   // ─────────────────────────────────────────────────────────
+  //  DAY PROFILES  (new in v5)
+  // ─────────────────────────────────────────────────────────
+
+  /// Insert or replace a day profile for a given day-of-week.
+  /// The UNIQUE constraint on day_of_week means this is a true upsert.
+  Future<void> upsertDayProfile(DayProfileModel profile) async {
+    try {
+      final db = await database;
+      await db.insert(
+        AppConstants.tableDayProfiles,
+        profile.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      AppLogger.d(_tag,
+          'Day profile upserted: ${profile.dayName} '
+          'busy=${profile.isBusy}');
+    } catch (e, st) {
+      AppLogger.e(_tag, 'Failed to upsert day profile', e, st);
+      rethrow;
+    }
+  }
+
+  /// Fetch the profile for a specific day-of-week (1–7).
+  /// Returns null if no profile exists yet.
+  Future<DayProfileModel?> getDayProfile(int dayOfWeek) async {
+    try {
+      final db   = await database;
+      final maps = await db.query(
+        AppConstants.tableDayProfiles,
+        where:     'day_of_week = ?',
+        whereArgs: [dayOfWeek],
+        limit:     1,
+      );
+      if (maps.isEmpty) return null;
+      return DayProfileModel.fromMap(maps.first);
+    } catch (e, st) {
+      AppLogger.e(_tag,
+          'Failed to get day profile for dow=$dayOfWeek', e, st);
+      return null;
+    }
+  }
+
+  /// Fetch all available day profiles, ordered by day_of_week.
+  Future<List<DayProfileModel>> getAllDayProfiles() async {
+    try {
+      final db   = await database;
+      final maps = await db.query(
+        AppConstants.tableDayProfiles,
+        orderBy: 'day_of_week ASC',
+      );
+      return maps.map(DayProfileModel.fromMap).toList();
+    } catch (e, st) {
+      AppLogger.e(_tag, 'Failed to get all day profiles', e, st);
+      return [];
+    }
+  }
+
+  /// Delete all day profiles (useful for testing / manual reset).
+  Future<void> clearDayProfiles() async {
+    try {
+      final db = await database;
+      await db.delete(AppConstants.tableDayProfiles);
+      AppLogger.i(_tag, 'Day profiles cleared');
+    } catch (e, st) {
+      AppLogger.e(_tag, 'Failed to clear day profiles', e, st);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────
   //  USAGE EVENTS
   // ─────────────────────────────────────────────────────────
 
@@ -373,7 +454,8 @@ class DatabaseHelper {
         AppConstants.tableUsageEvents,
         event.toMap(),
       );
-      AppLogger.d(_tag, 'Logged event type=${event.eventType} id=$id');
+      AppLogger.d(_tag,
+          'Logged event type=${event.eventType} id=$id');
       return id;
     } catch (e, st) {
       AppLogger.e(_tag, 'Failed to insert usage event', e, st);

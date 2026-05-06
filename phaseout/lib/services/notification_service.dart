@@ -1,156 +1,165 @@
 // ─────────────────────────────────────────────────────────────
 //  lib/services/notification_service.dart
-//  PhaseOut — Notification channels with sound (IMPORTANCE_HIGH)
+//
+//  FIXES:
+//  - initialise() restored (was renamed to init() by mistake)
+//  - cancelAll() added (called by background_service.dart)
+//  - sendScheduledReminder() added (called by battery_service
+//    and pre_notification_service)
+//  - Channel constants now use AppConstants values
+//  - Custom sound stored via prefCustomSoundUri constant
 // ─────────────────────────────────────────────────────────────
 
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../db/database_helper.dart';
+import '../models/usage_event_model.dart';
 import '../utils/constants.dart';
 import '../utils/logger.dart';
 
 class NotificationService {
 
-  static const String _tag = 'NotificationService';
-  static final FlutterLocalNotificationsPlugin _plugin =
-      FlutterLocalNotificationsPlugin();
+  static const String _tag     = 'NotificationService';
+  static const _channel        = MethodChannel(AppConstants.mediaChannel);
+  static final _plugin          = FlutterLocalNotificationsPlugin();
+  static bool _initialized      = false;
 
-  NotificationService._();
-
+  // ── Initialise — called from main.dart ───────────────────
   static Future<void> initialise() async {
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
-    const settings = InitializationSettings(android: androidSettings);
-    await _plugin.initialize(settings,
-        onDidReceiveNotificationResponse: _onTap);
-    await _createChannels();
+    if (_initialized) return;
+    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    await _plugin.initialize(const InitializationSettings(android: android));
+    _initialized = true;
     AppLogger.i(_tag, 'NotificationService initialised');
   }
 
-  static void _onTap(NotificationResponse r) =>
-      AppLogger.d(_tag, 'Notification tapped: ${r.id}');
-
-  static Future<void> _createChannels() async {
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    if (android == null) return;
-
-    // Silent BGS persistent
-    await android.createNotificationChannel(
-      const AndroidNotificationChannel(
-        AppConstants.notifChannelBGS,
-        AppConstants.notifChannelBGSName,
-        description: 'Keeps PhaseOut running overnight',
-        importance: Importance.low,
-        playSound: false,
-        enableVibration: false,
-      ),
-    );
-
-    // Wind-down — HIGH with sound
-    await android.createNotificationChannel(
-      const AndroidNotificationChannel(
-        AppConstants.notifChannelWindDown,
-        AppConstants.notifChannelWindDownName,
-        description: 'Bedtime schedule alerts',
-        importance: Importance.high,
-        playSound: true,
-        enableVibration: true,
-        enableLights: true,
-      ),
-    );
-
-    // Reminders — HIGH with sound
-    await android.createNotificationChannel(
-      const AndroidNotificationChannel(
-        AppConstants.notifChannelReminder,
-        AppConstants.notifChannelReminderName,
-        description: 'Upcoming schedule reminders',
-        importance: Importance.high,
-        playSound: true,
-        enableVibration: true,
-      ),
-    );
-
-    // General alerts — HIGH with sound
-    await android.createNotificationChannel(
-      const AndroidNotificationChannel(
-        AppConstants.notifChannelAlert,
-        AppConstants.notifChannelAlertName,
-        description: 'Usage and focus alerts',
-        importance: Importance.high,
-        playSound: true,
-        enableVibration: true,
-      ),
-    );
-
-    // Usage limit alerts — HIGH with sound
-    await android.createNotificationChannel(
-      const AndroidNotificationChannel(
-        AppConstants.notifChannelUsageAlert,
-        AppConstants.notifChannelUsageAlertName,
-        description: 'Daily app usage limit alerts',
-        importance: Importance.high,
-        playSound: true,
-        enableVibration: true,
-      ),
-    );
-
-    AppLogger.i(_tag, 'Notification channels created (IMPORTANCE_HIGH)');
-  }
-
-  static Future<void> showPersistentBGS() async {
-    const details = AndroidNotificationDetails(
-      AppConstants.notifChannelBGS, AppConstants.notifChannelBGSName,
-      importance: Importance.low, priority: Priority.low,
-      ongoing: true, autoCancel: false,
-      playSound: false, enableVibration: false,
-      icon: '@mipmap/ic_launcher',
-    );
-    await _plugin.show(AppConstants.notifIdBGS,
-        'PhaseOut is active', 'Monitoring your schedules',
-        const NotificationDetails(android: details));
-  }
-
-  static Future<void> sendWindDownNotification() async {
-    const details = AndroidNotificationDetails(
-      AppConstants.notifChannelWindDown, AppConstants.notifChannelWindDownName,
-      importance: Importance.high, priority: Priority.high,
-      playSound: true, enableVibration: true,
-      icon: '@mipmap/ic_launcher',
-      fullScreenIntent: true,
-    );
-    await _plugin.show(AppConstants.notifIdWindDown,
-        'Wind-down time 🌙', 'Your bedtime schedule has started.',
-        const NotificationDetails(android: details));
-    AppLogger.i(_tag, 'Wind-down notification sent');
-  }
-
-  static Future<void> sendScheduledReminder(String title, String body) async {
-    const details = AndroidNotificationDetails(
-      AppConstants.notifChannelReminder, AppConstants.notifChannelReminderName,
-      importance: Importance.high, priority: Priority.high,
-      playSound: true, enableVibration: true,
-      icon: '@mipmap/ic_launcher',
-    );
-    await _plugin.show(AppConstants.notifIdReminder, title, body,
-        const NotificationDetails(android: details));
-    AppLogger.d(_tag, 'Reminder sent: $title');
-  }
-
-  static Future<void> sendAlert(String title, String body) async {
-    const details = AndroidNotificationDetails(
-      AppConstants.notifChannelAlert, AppConstants.notifChannelAlertName,
-      importance: Importance.high, priority: Priority.high,
-      playSound: true, enableVibration: true,
-      icon: '@mipmap/ic_launcher',
-    );
-    await _plugin.show(AppConstants.notifIdAlert, title, body,
-        const NotificationDetails(android: details));
-  }
-
+  // ── Cancel all notifications ──────────────────────────────
+  // Called by background_service.dart on shutdown.
   static Future<void> cancelAll() async {
-    await _plugin.cancelAll();
-    AppLogger.i(_tag, 'All notifications cancelled');
+    try {
+      await _plugin.cancelAll();
+      AppLogger.d(_tag, 'All notifications cancelled');
+    } catch (e) {
+      AppLogger.e(_tag, 'cancelAll failed', e);
+    }
   }
 
-  static Future<void> cancel(int id) async => _plugin.cancel(id);
+  // ── Log an event to the activity log ─────────────────────
+  static Future<void> logEvent({
+    required String eventType,
+    required String detail,
+    String outcome = AppConstants.outcomeSuccess,
+  }) async {
+    try {
+      await DatabaseHelper.instance.insertUsageEvent(UsageEventModel(
+        eventType: eventType,
+        detail:    detail,
+        outcome:   outcome,
+        eventTime: DateTime.now(),
+      ));
+    } catch (e) {
+      AppLogger.e(_tag, 'logEvent failed', e);
+    }
+  }
+
+  // ── Send a high-importance alert ──────────────────────────
+  static Future<void> sendAlert(String title, String body) async {
+    try {
+      await initialise();
+      final soundUri = await _getSoundUri();
+
+      final details = AndroidNotificationDetails(
+        AppConstants.channelAlerts,
+        'PhaseOut Alerts',
+        channelDescription: 'Schedule and limit alerts',
+        importance:      Importance.high,
+        priority:        Priority.high,
+        playSound:       true,
+        enableVibration: true,
+        sound: soundUri != null
+            ? UriAndroidNotificationSound(soundUri) : null,
+      );
+
+      await _plugin.show(
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        title, body,
+        NotificationDetails(android: details),
+      );
+
+      await logEvent(eventType: 'alert', detail: '$title — $body');
+    } catch (e) {
+      AppLogger.e(_tag, 'sendAlert failed', e);
+    }
+  }
+
+  // ── Send a bedtime reminder ───────────────────────────────
+  static Future<void> sendReminder(String scheduleName, String time) async {
+    try {
+      await initialise();
+      final soundUri = await _getSoundUri();
+
+      final details = AndroidNotificationDetails(
+        AppConstants.channelReminders,
+        'Bedtime Reminders',
+        channelDescription: 'Upcoming schedule reminders',
+        importance:  Importance.high,
+        priority:    Priority.high,
+        playSound:   true,
+        sound: soundUri != null
+            ? UriAndroidNotificationSound(soundUri) : null,
+      );
+
+      await _plugin.show(
+        scheduleName.hashCode,
+        '🌙 Bedtime in 30 minutes',
+        '$scheduleName starts at $time',
+        NotificationDetails(android: details),
+      );
+
+      await logEvent(
+          eventType: 'reminder',
+          detail: '$scheduleName — reminder at $time');
+    } catch (e) {
+      AppLogger.e(_tag, 'sendReminder failed', e);
+    }
+  }
+
+  // ── Send a scheduled reminder (alias used by battery/pre-notification services)
+  static Future<void> sendScheduledReminder(
+      String title, String body) async {
+    await sendAlert(title, body);
+  }
+
+  // ── Custom sound ──────────────────────────────────────────
+  static Future<void> setCustomSound(String? soundUri) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (soundUri == null) {
+      await prefs.remove(AppConstants.prefCustomSoundUri);
+    } else {
+      await prefs.setString(AppConstants.prefCustomSoundUri, soundUri);
+    }
+  }
+
+  static Future<String?> getCustomSound() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(AppConstants.prefCustomSoundUri);
+  }
+
+  static Future<String?> _getSoundUri() => getCustomSound();
+
+  static Future<void> clearCustomSound() => setCustomSound(null);
+
+  // ── Pick custom sound from device ────────────────────────
+  static Future<String?> pickSound() async {
+    try {
+      final uri = await _channel
+          .invokeMethod<String>('pickNotificationSound');
+      if (uri != null) await setCustomSound(uri);
+      return uri;
+    } catch (e) {
+      AppLogger.e(_tag, 'pickSound failed', e);
+      return null;
+    }
+  }
 }

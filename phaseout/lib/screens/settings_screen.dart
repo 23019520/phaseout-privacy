@@ -1,15 +1,20 @@
 // ─────────────────────────────────────────────────────────────
-//  lib/screens/settings_screen.dart  — PhaseOut v1.0 final
+//  lib/screens/settings_screen.dart
 //
-//  Reworked: cleaner layout, proper section grouping,
-//  removed redundant items, improved copy throughout.
+//  FIX #8:
+//  - Developer: Dzivhani Unarine
+//  - Privacy policy URL: 23019520.github.io/phaseout-privacy
+//  - Custom notification sound picker added
+//  - Version updated to 1.0.0 — Final
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../app_theme.dart';
 import '../db/database_helper.dart';
 import '../services/background_service.dart';
+import '../services/notification_service.dart';
 import '../utils/constants.dart';
 import 'permissions_screen.dart';
 
@@ -20,9 +25,10 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-
-  bool _bgsRunning       = false;
-  bool _analyticsEnabled = true;
+  bool    _bgsRunning       = false;
+  bool    _analyticsEnabled = true;
+  String? _customSoundUri;
+  String? _customSoundLabel;
 
   @override
   void initState() { super.initState(); _load(); }
@@ -31,10 +37,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final bgs       = await BackgroundService.isRunning();
     final prefs     = await SharedPreferences.getInstance();
     final analytics = prefs.getBool(AppConstants.prefAnalyticsEnabled) ?? true;
-    if (mounted) setState(() {
-      _bgsRunning       = bgs;
-      _analyticsEnabled = analytics;
-    });
+    final sound     = await NotificationService.getCustomSound();
+    if (mounted) {
+      setState(() {
+        _bgsRunning       = bgs;
+        _analyticsEnabled = analytics;
+        _customSoundUri   = sound;
+        _customSoundLabel = sound != null ? 'Custom sound set' : null;
+      });
+    }
   }
 
   Future<void> _toggleAnalytics(bool v) async {
@@ -43,55 +54,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _analyticsEnabled = v);
   }
 
-  Future<void> _restartBgs() async {
-    await BackgroundService.stop();
-    await Future.delayed(const Duration(seconds: 1));
-    await BackgroundService.start();
-    await Future.delayed(const Duration(seconds: 2));
-    _load();
-  }
-
-  Future<void> _clearAllData() async {
-    final ok = await _confirm(
-      'Clear all data',
-      'This deletes all schedules, usage history, battery data, and settings. It cannot be undone.',
-      confirmLabel: 'Delete everything',
-      confirmColor: AppTheme.danger,
-    );
-    if (!ok) return;
-    await DatabaseHelper.instance.close();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All data cleared. Please restart the app.')));
+  Future<void> _pickCustomSound() async {
+    final uri = await NotificationService.pickSound();
+    if (uri != null && mounted) {
+      setState(() {
+        _customSoundUri   = uri;
+        _customSoundLabel = 'Custom sound set';
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Custom notification sound saved.')));
+      }
     }
   }
 
-  Future<bool> _confirm(
-    String title,
-    String body, {
-    required String confirmLabel,
-    required Color  confirmColor,
-  }) async {
+  Future<void> _clearCustomSound() async {
+    await NotificationService.clearCustomSound();
+    setState(() { _customSoundUri = null; _customSoundLabel = null; });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Restored default notification sound.')));
+    }
+  }
+
+  Future<void> _openPrivacyPolicy() async {
+    final url = Uri.parse('https://23019520.github.io/phaseout-privacy');
+    if (await canLaunchUrl(url)) await launchUrl(url);
+  }
+
+  Future<void> _resetOnboarding() async {
+    final ok = await _confirm(context, 'Reset onboarding',
+        'This will show the onboarding flow next time you open the app.',
+        confirmLabel: 'Reset', confirmColor: AppTheme.amber);
+    if (ok) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(AppConstants.prefOnboardingDone, false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Onboarding reset. Restart the app.')));
+      }
+    }
+  }
+
+  Future<void> _clearAllData() async {
+    final ok = await _confirm(context, 'Clear all data',
+        'This will delete all schedules, usage history, and settings. This cannot be undone.',
+        confirmLabel: 'Delete everything', confirmColor: AppTheme.rose);
+    if (ok) {
+      await DatabaseHelper.instance.close();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('All data cleared. Restart the app.')));
+      }
+    }
+  }
+
+  Future<bool> _confirm(BuildContext ctx, String title, String body,
+      {required String confirmLabel, required Color confirmColor}) async {
     return await showDialog<bool>(
-      context: context,
+      context: ctx,
       builder: (_) => AlertDialog(
-        backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(title, style: const TextStyle(
-            color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)),
-        content: Text(body,
-            style: const TextStyle(color: AppTheme.textSecond, height: 1.5)),
+        title: Text(title),
+        content: Text(body),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: AppTheme.textSecond))),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(confirmLabel,
-                style: TextStyle(color: confirmColor, fontWeight: FontWeight.w600))),
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel',
+                  style: TextStyle(color: AppTheme.textSecond))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true),
+              child: Text(confirmLabel,
+                  style: TextStyle(color: confirmColor))),
         ],
       ),
     ) ?? false;
@@ -101,132 +134,135 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.navy,
-      appBar: AppBar(
-        backgroundColor: AppTheme.navy,
-        title: const Text('Settings'),
-      ),
+      appBar: AppBar(title: const Text('Settings')),
       body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
 
-          // ── Service status ────────────────────────────────
           _Section('Background service', children: [
             _Tile(
-              icon:      Icons.circle,
-              iconColor: _bgsRunning ? AppTheme.success : AppTheme.danger,
-              title:     'Service status',
-              subtitle:  _bgsRunning
-                  ? 'Running — schedules will fire automatically'
-                  : 'Stopped — tap to restart',
+              icon: Icons.circle,
+              iconColor: _bgsRunning ? AppTheme.success : AppTheme.rose,
+              title: 'Service status',
+              subtitle: _bgsRunning ? 'Running — schedules are active' : 'Stopped',
               trailing: _bgsRunning
-                  ? _Tag('Active', AppTheme.success)
-                  : _TextBtn('Restart', AppTheme.amber, _restartBgs),
+                  ? _TextAction('Stop', AppTheme.rose, () async {
+                      await BackgroundService.stop();
+                      await Future.delayed(const Duration(seconds: 1));
+                      _load();
+                    })
+                  : _TextAction('Start', AppTheme.success, () async {
+                      await BackgroundService.start();
+                      await Future.delayed(const Duration(seconds: 2));
+                      _load();
+                    }),
             ),
           ]),
 
-          // ── Permissions ───────────────────────────────────
           _Section('Permissions', children: [
             _Tile(
-              icon:      Icons.security_rounded,
-              iconColor: AppTheme.accentLight,
-              title:     'Manage permissions',
-              subtitle:  'Notification access, usage stats, overlay and more',
+              icon: Icons.security_rounded, iconColor: AppTheme.blue,
+              title: 'Manage permissions',
+              subtitle: 'Check and grant required permissions',
               onTap: () => Navigator.push(context,
                   MaterialPageRoute(builder: (_) => const PermissionsScreen())),
             ),
           ]),
 
-          // ── Privacy ───────────────────────────────────────
+          // FIX #2 — Custom notification sound
+          _Section('Notifications', children: [
+            _Tile(
+              icon: Icons.music_note_rounded, iconColor: AppTheme.tealLight,
+              title: 'Notification sound',
+              subtitle: _customSoundLabel ?? 'Using default system sound',
+              onTap: _pickCustomSound,
+            ),
+            if (_customSoundUri != null)
+              _Tile(
+                icon: Icons.restore_rounded, iconColor: AppTheme.textSecond,
+                title: 'Restore default sound',
+                subtitle: 'Remove custom sound',
+                onTap: _clearCustomSound,
+              ),
+          ]),
+
           _Section('Privacy', children: [
             _Tile(
-              icon:      Icons.analytics_rounded,
-              iconColor: AppTheme.tealLight,
-              title:     'Crash analytics',
-              subtitle:  'Send anonymous crash reports to help fix bugs',
-              trailing:  Switch(
-                value:     _analyticsEnabled,
-                onChanged: _toggleAnalytics,
-              ),
+              icon: Icons.analytics_rounded, iconColor: AppTheme.teal,
+              title: 'Crash analytics',
+              subtitle: 'Share anonymous crash data to improve PhaseOut',
+              trailing: Switch(
+                  value: _analyticsEnabled, onChanged: _toggleAnalytics),
+            ),
+            _Tile(
+              icon: Icons.policy_rounded, iconColor: AppTheme.textSecond,
+              title: 'Privacy Policy',
+              subtitle: '23019520.github.io/phaseout-privacy',
+              onTap: _openPrivacyPolicy,
             ),
           ]),
 
-          // ── About ─────────────────────────────────────────
-          _Section('About', children: [
-            const _Tile(
-              icon:      Icons.info_outline_rounded,
-              iconColor: AppTheme.textSecond,
-              title:     'Version',
-              subtitle:  '1.0.0',
-            ),
-            const _Tile(
-              icon:      Icons.code_rounded,
-              iconColor: AppTheme.textSecond,
-              title:     'Developer',
-              subtitle:  'BrightDev',
-            ),
-            const _Tile(
-              icon:      Icons.shield_outlined,
-              iconColor: AppTheme.textSecond,
-              title:     'Privacy policy',
-              subtitle:  'brightdev.github.io/phaseout-privacy',
-            ),
-          ]),
-
-          // ── Danger zone ───────────────────────────────────
           _Section('Data', children: [
             _Tile(
-              icon:      Icons.delete_forever_rounded,
-              iconColor: AppTheme.danger,
-              title:     'Clear all data',
-              subtitle:  'Delete schedules, usage history, and all settings',
-              onTap:     _clearAllData,
+              icon: Icons.restart_alt_rounded, iconColor: AppTheme.amber,
+              title: 'Reset onboarding',
+              subtitle: 'Show the intro screens again on next launch',
+              onTap: _resetOnboarding,
+            ),
+            _Tile(
+              icon: Icons.delete_forever_rounded, iconColor: AppTheme.rose,
+              title: 'Clear all data',
+              subtitle: 'Delete all schedules, usage history, and settings',
+              onTap: _clearAllData,
             ),
           ]),
 
-          const SizedBox(height: 32),
+          // FIX #8 — Developer info
+          const _Section('About', children: [
+            _Tile(
+              icon: Icons.info_outline_rounded, iconColor: AppTheme.textSecond,
+              title: 'Version', subtitle: '1.0.0 — Final'),
+            _Tile(
+              icon: Icons.code_rounded, iconColor: AppTheme.textSecond,
+              title: 'Developer', subtitle: 'Dzivhani Unarine'),
+            _Tile(
+              icon: Icons.business_rounded, iconColor: AppTheme.textSecond,
+              title: 'Package', subtitle: AppConstants.packageName),
+          ]),
 
-          // Footer
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Text(
-              'PhaseOut v1.0 · com.brightdev.phaseout',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 11, color: AppTheme.textHint),
-            ),
-          ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 40),
         ],
       ),
     );
   }
 }
 
-// ── Section wrapper ───────────────────────────────────────────
-class _Section extends StatelessWidget {
-  final String       title;
-  final List<Widget> children;
-  const _Section(this.title, {required this.children});
+class _TextAction extends StatelessWidget {
+  final String label; final Color color; final VoidCallback onTap;
+  const _TextAction(this.label, this.color, this.onTap);
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Text(label,
+        style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600)));
+}
 
+class _Section extends StatelessWidget {
+  final String title; final List<Widget> children;
+  const _Section(this.title, {required this.children});
   @override
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
         child: Text(title.toUpperCase(),
-          style: const TextStyle(
-              fontSize:   10,
-              fontWeight: FontWeight.w600,
-              color:      AppTheme.textHint,
-              letterSpacing: 1.2)),
-      ),
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
+                color: AppTheme.textHint, letterSpacing: 1.2))),
       Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color:        AppTheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.border),
-        ),
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.border)),
         child: Column(children: [
           for (var i = 0; i < children.length; i++) ...[
             children[i],
@@ -239,39 +275,26 @@ class _Section extends StatelessWidget {
   }
 }
 
-// ── Tile ──────────────────────────────────────────────────────
 class _Tile extends StatelessWidget {
-  final IconData     icon;
-  final Color        iconColor;
-  final String       title;
-  final String       subtitle;
+  final IconData icon; final Color iconColor;
+  final String title, subtitle;
   final VoidCallback? onTap;
-  final Widget?       trailing;
-  const _Tile({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-    this.onTap,
-    this.trailing,
-  });
-
+  final Widget? trailing;
+  const _Tile({required this.icon, required this.iconColor,
+      required this.title, required this.subtitle,
+      this.onTap, this.trailing});
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: Container(
-        width: 34, height: 34,
-        decoration: BoxDecoration(
-          color:        iconColor.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(9)),
-        child: Icon(icon, color: iconColor, size: 17),
-      ),
-      title: Text(title,
-        style: const TextStyle(fontSize: 13,
-            fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
-      subtitle: Text(subtitle,
-        style: const TextStyle(fontSize: 11, color: AppTheme.textHint, height: 1.4)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      leading: Container(width: 34, height: 34,
+        decoration: BoxDecoration(color: iconColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(9)),
+        child: Icon(icon, color: iconColor, size: 17)),
+      title: Text(title, style: const TextStyle(fontSize: 13,
+          fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
+      subtitle: Text(subtitle, style: const TextStyle(
+          fontSize: 11, color: AppTheme.textHint)),
       trailing: trailing ??
           (onTap != null
               ? const Icon(Icons.chevron_right_rounded,
@@ -280,27 +303,4 @@ class _Tile extends StatelessWidget {
       onTap: onTap,
     );
   }
-}
-
-class _Tag extends StatelessWidget {
-  final String label; final Color color;
-  const _Tag(this.label, this.color);
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.12),
-      borderRadius: BorderRadius.circular(99)),
-    child: Text(label,
-      style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)));
-}
-
-class _TextBtn extends StatelessWidget {
-  final String label; final Color color; final VoidCallback onTap;
-  const _TextBtn(this.label, this.color, this.onTap);
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: Text(label,
-      style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600)));
 }

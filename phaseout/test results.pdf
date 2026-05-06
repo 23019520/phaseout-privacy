@@ -1,0 +1,34 @@
+1 flutter test --coverage
+    -Run unit/widget tests with coverage
+
+PS C:\Users\unari\work\phaseOut\phaseout> flutter test --coverage
+00:03 +17: All tests passed! 
+
+2 flutter build apk --profile --split-per-abi
+    -Build profile APK for testing
+
+PS C:\Users\unari\work\phaseOut\phaseout> flutter build apk --profile --split-per-abi
+Running Gradle task 'assembleProfile'...                             
+Font asset "MaterialIcons-Regular.otf" was tree-shaken, reducing it from 1645184 to 11436 bytes (99.3% reduction). Tree-shaking can be disabled by providing the --no-tree-shake-icons flag when building your app.
+Running Gradle task 'assembleProfile'...                               168,4s
+√ Built build\app\outputs\flutter-apk\app-armeabi-v7a-profile.apk
+(35.9MB)
+√ Built build\app\outputs\flutter-apk\app-arm64-v8a-profile.apk
+(40.5MB)
+√ Built build\app\outputs\flutter-apk\app-x86_64-profile.apk (43.7MB)
+PS C:\Users\unari\work\phaseOut\phaseout> 
+
+3 adb shell am start -W -n com.brightdev.phaseout/.MainActivity
+    -Measure cold start time on device 
+
+PS C:\Users\unari\work\phaseOut\phaseout> & "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" shell am start -W -n com.brightdev.phaseout/.MainActivity
+Starting: Intent { cmp=com.brightdev.phaseout/.MainActivity }
+Warning: Activity not started, its current task has been brought to the front
+Status: ok
+LaunchState: HOT
+Activity: com.brightdev.phaseout/.MainActivity
+TotalTime: 368
+WaitTime: 372
+Complete
+PS C:\Users\unari\work\phaseOut\phaseout> 
+

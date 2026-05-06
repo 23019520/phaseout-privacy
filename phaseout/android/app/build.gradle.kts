@@ -7,12 +7,19 @@ plugins {
 
 dependencies {
     implementation(platform("com.google.firebase:firebase-bom:34.10.0"))
+
+    // ADD THIS
+    implementation("androidx.activity:activity-ktx:1.8.2")
+
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
 
 android {
     namespace = "com.brightdev.phaseout"
-    compileSdk = flutter.compileSdkVersion
+
+    // Better to set directly
+    compileSdk = 36
+
     ndkVersion = "28.2.13676358"
 
     compileOptions {
@@ -26,23 +33,23 @@ android {
     }
 
     defaultConfig {
-    applicationId = "com.brightdev.phaseout"
-    minSdk = 26
-    targetSdk = flutter.targetSdkVersion
-    versionCode = flutter.versionCode
-    versionName = flutter.versionName
-}
+        applicationId = "com.brightdev.phaseout"
+        minSdk = 26
+        targetSdk = 34
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
 
     buildTypes {
-    release {
-        signingConfig = signingConfigs.getByName("debug")
-        isMinifyEnabled = true
-        proguardFiles(
-            getDefaultProguardFile("proguard-android-optimize.txt"),
-            "proguard-rules.pro"
-        )
+        release {
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
     }
-}
 }
 
 flutter {

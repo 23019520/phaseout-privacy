@@ -1,7 +1,17 @@
 // ─────────────────────────────────────────────────────────────
-//  PhaseOutService.kt  — v4
-//  Sound: IMPORTANCE_HIGH + AudioAttributes + default ringtone
-//  Snooze/Skip: pre-action notification 30s before firing
+//  PhaseOutService.kt  — v7  (complete)
+//
+//  Fixed from v6:
+//  1. onDestroy: removed super.dispose() (Service has no such
+//     method — was the crash). Uses super.onDestroy() correctly.
+//  2. stopAllMedia: passes NLS ComponentName so getActiveSessions
+//     actually works on real devices (null fails without root).
+//  3. Added checkAndFireSchedules() called from tick() — without
+//     this, schedules were never fired by the service.
+//  4. Audio timer uses Handler.postDelayed (precise) instead of
+//     SharedPrefs polling every 60s (up to 60s late).
+//  5. Imports cleaned up — no more inline java.util.Calendar or
+//     kotlin.math.abs references scattered through the file.
 // ─────────────────────────────────────────────────────────────
 
 package com.brightdev.phaseout
@@ -9,8 +19,6 @@ package com.brightdev.phaseout
 import android.app.*
 import android.app.usage.UsageStatsManager
 import android.content.*
-import android.content.pm.ServiceInfo
-import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.RingtoneManager
 import android.media.session.MediaSessionManager
@@ -18,98 +26,143 @@ import android.os.*
 import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import java.util.*
+import java.util.Calendar
+import kotlin.math.abs
 
 class PhaseOutService : Service() {
 
     companion object {
         private const val TAG = "PhaseOut.Service"
 
-        const val ACTION_STOP_MEDIA      = "com.brightdev.phaseout.STOP_MEDIA"
-        const val ACTION_START_FOCUS     = "com.brightdev.phaseout.START_FOCUS"
-        const val ACTION_STOP_FOCUS      = "com.brightdev.phaseout.STOP_FOCUS"
-        const val ACTION_SET_TIMER       = "com.brightdev.phaseout.SET_TIMER"
-        const val ACTION_CANCEL_TIMER    = "com.brightdev.phaseout.CANCEL_TIMER"
-        const val ACTION_STOP_SERVICE    = "com.brightdev.phaseout.STOP_SERVICE"
-        const val ACTION_MORNING_RESTORE = "com.brightdev.phaseout.MORNING_RESTORE"
-        const val ACTION_SNOOZE_15       = "com.brightdev.phaseout.SNOOZE_15"
-        const val ACTION_SNOOZE_30       = "com.brightdev.phaseout.SNOOZE_30"
-        const val ACTION_SKIP_TODAY      = "com.brightdev.phaseout.SKIP_TODAY"
-        const val ACTION_FIRE_NOW        = "com.brightdev.phaseout.FIRE_NOW"
-        const val EXTRA_SCHEDULE_ID      = "schedule_id"
-        const val EXTRA_EXPIRY_MS        = "expiry_ms"
-        const val EXTRA_ALLOWLIST        = "allowlist"
+        // ── Actions ────────────────────────────────────────────
+        const val ACTION_STOP_MEDIA           = "com.brightdev.phaseout.STOP_MEDIA"
+        const val ACTION_START_FOCUS          = "com.brightdev.phaseout.START_FOCUS"
+        const val ACTION_STOP_FOCUS           = "com.brightdev.phaseout.STOP_FOCUS"
+        const val ACTION_SET_TIMER            = "com.brightdev.phaseout.SET_TIMER"
+        const val ACTION_CANCEL_TIMER         = "com.brightdev.phaseout.CANCEL_TIMER"
+        const val ACTION_STOP_SERVICE         = "com.brightdev.phaseout.STOP_SERVICE"
+        const val ACTION_MORNING_RESTORE      = "com.brightdev.phaseout.MORNING_RESTORE"
+        const val ACTION_DIM_BRIGHTNESS       = "com.brightdev.phaseout.DIM_BRIGHTNESS"
+        const val ACTION_RESTORE_BRIGHTNESS   = "com.brightdev.phaseout.RESTORE_BRIGHTNESS"
+        const val ACTION_ENABLE_DND           = "com.brightdev.phaseout.ENABLE_DND"
+        const val ACTION_DISABLE_DND          = "com.brightdev.phaseout.DISABLE_DND"
+        const val ACTION_SEND_CHARGE_REMINDER = "com.brightdev.phaseout.SEND_CHARGE_REMINDER"
 
+        // ── Extras ─────────────────────────────────────────────
+        const val EXTRA_BRIGHTNESS_LEVEL = "brightness_level"
+        const val EXTRA_EXPIRY_MS        = "extra_expiry_ms"
+        const val EXTRA_ALLOWLIST        = "extra_allowlist"
+
+        // ── Notification channels ──────────────────────────────
         private const val NOTIF_CHANNEL_ID  = "phaseout_native_service"
         private const val ALERT_CHANNEL_ID  = "phaseout_alerts"
-        private const val PREACTION_CHANNEL = "phaseout_preaction"
+        private const val CHARGE_CHANNEL_ID = "phaseout_charge"
         private const val NOTIF_ID          = 101
+        private const val NOTIF_ID_CHARGE   = 50
         private const val TICK_MS           = 60_000L
+        private const val FOCUS_POLL_MS     = 1_000L
 
+        // ── SharedPreferences ──────────────────────────────────
+        // "FlutterSharedPreferences" is Flutter's default file —
+        // Dart and Kotlin share the same file so snooze/skip keys
+        // written by Dart are readable here without any bridge.
         private const val PREFS_NAME          = "FlutterSharedPreferences"
-        private const val KEY_TIMER_EXPIRY    = "flutter.audio_timer_expiry_ms"
-        private const val KEY_TIMER_ACTIVE    = "flutter.audio_timer_active"
-        private const val KEY_FOCUS_ACTIVE    = "flutter.focus_session_active"
-        private const val KEY_FOCUS_ALLOWLIST = "flutter.focus_session_allowlist"
         private const val KEY_DND_PREV_FILTER = "phaseout.prev_dnd_filter"
         private const val KEY_BRIGHTNESS_PREV = "phaseout.prev_brightness"
-        private const val KEY_BEDTIME_ACTIVE  = "phaseout.bedtime_active"
-
-        private fun snoozeKey(id: Int) = "phaseout.snooze_until_$id"
-        private fun skipKey(id: Int)   = "phaseout.skip_$id"
-        private fun todayKey(): String {
-            val c = Calendar.getInstance()
-            return "${c.get(Calendar.YEAR)}-${c.get(Calendar.MONTH)}-${c.get(Calendar.DAY_OF_MONTH)}"
-        }
-
-        private val lastFired     = mutableMapOf<Int, String>()
-        private val preNotifFired = mutableSetOf<String>()
-        private val pendingFire   = mutableMapOf<Int, Long>()
-        private var lastFocusBlock = 0L
+        private const val KEY_FOCUS_ACTIVE    = "flutter.focus_session_active"
+        private const val KEY_FOCUS_ALLOWLIST = "flutter.focus_session_allowlist"
     }
 
-    private val handler = Handler(Looper.getMainLooper())
+    private val handler        = Handler(Looper.getMainLooper())
+    private var focusAllowlist = mutableListOf<String>()
+    private var focusActive    = false
+
+    // Precise audio timer — fires exactly at expiry via postDelayed
+    private var timerRunnable: Runnable? = null
+
     private val tickRunnable = object : Runnable {
-        override fun run() { tick(); handler.postDelayed(this, TICK_MS) }
+        override fun run() {
+            tick()
+            handler.postDelayed(this, TICK_MS)
+        }
     }
+
+    private val focusRunnable = object : Runnable {
+        override fun run() {
+            if (focusActive) {
+                checkFocusAndBlock()
+                handler.postDelayed(this, FOCUS_POLL_MS)
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  LIFECYCLE
+    // ─────────────────────────────────────────────────────────
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannels()
         startForegroundCompat()
-        Log.i(TAG, "PhaseOutService v4 created")
+        Log.i(TAG, "Service v7 started")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val schedId = intent?.getIntExtra(EXTRA_SCHEDULE_ID, -1) ?: -1
         when (intent?.action) {
-            ACTION_STOP_MEDIA    -> stopAllMedia()
-            ACTION_START_FOCUS   -> {
-                val al = intent.getStringArrayListExtra(EXTRA_ALLOWLIST) ?: arrayListOf()
-                saveFocusState(true, al)
+
+            ACTION_STOP_MEDIA -> stopAllMedia()
+
+            ACTION_SET_TIMER -> {
+                val expiryMs = intent.getLongExtra(EXTRA_EXPIRY_MS, 0L)
+                if (expiryMs > 0) scheduleAudioTimer(expiryMs)
             }
-            ACTION_STOP_FOCUS    -> { saveFocusState(false, arrayListOf()); PhaseOutWindowOverlay.dismiss() }
-            ACTION_SET_TIMER     -> {
-                val ms = intent.getLongExtra(EXTRA_EXPIRY_MS, 0L)
-                if (ms > 0) saveTimerState(true, ms)
+
+            ACTION_CANCEL_TIMER -> cancelAudioTimer()
+
+            ACTION_START_FOCUS -> {
+                val allowlist = intent.getStringArrayListExtra(EXTRA_ALLOWLIST) ?: arrayListOf()
+                focusAllowlist = allowlist.toMutableList()
+                focusActive    = true
+                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                    .putBoolean(KEY_FOCUS_ACTIVE, true)
+                    .putString(KEY_FOCUS_ALLOWLIST, allowlist.joinToString(","))
+                    .apply()
+                handler.post(focusRunnable)
+                Log.i(TAG, "Focus started — allowlist: $allowlist")
             }
-            ACTION_CANCEL_TIMER  -> saveTimerState(false, 0L)
-            ACTION_STOP_SERVICE  -> stopSelf()
-            ACTION_MORNING_RESTORE -> performMorningRestore()
-            ACTION_SNOOZE_15     -> if (schedId >= 0) setSnooze(schedId, 15)
-            ACTION_SNOOZE_30     -> if (schedId >= 0) setSnooze(schedId, 30)
-            ACTION_SKIP_TODAY    -> if (schedId >= 0) setSkipToday(schedId)
-            ACTION_FIRE_NOW      -> {
-                if (schedId >= 0) {
-                    pendingFire.remove(schedId)
-                    val s = PhaseOutDatabase.getEnabledSchedules(this).firstOrNull { it.id == schedId }
-                    s?.let { for (a in it.actions) executeAction(a, it) }
-                }
+
+            ACTION_STOP_FOCUS -> {
+                focusActive = false
+                handler.removeCallbacks(focusRunnable)
+                PhaseOutWindowOverlay.dismiss()
+                getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                    .putBoolean(KEY_FOCUS_ACTIVE, false)
+                    .apply()
+                Log.i(TAG, "Focus stopped")
             }
+
+            ACTION_DIM_BRIGHTNESS -> {
+                val level = intent.getIntExtra(EXTRA_BRIGHTNESS_LEVEL, 30)
+                dimBrightness(level)
+            }
+
+            ACTION_RESTORE_BRIGHTNESS -> restoreBrightness()
+
+            ACTION_ENABLE_DND  -> enableDoNotDisturb()
+            ACTION_DISABLE_DND -> disableDoNotDisturb()
+
+            ACTION_SEND_CHARGE_REMINDER -> sendChargeReminder()
+
+            ACTION_STOP_SERVICE -> {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+
             null -> {
-                Log.i(TAG, "Service started — tick loop")
+                // Initial start — kick off the tick loop
                 handler.removeCallbacks(tickRunnable)
                 handler.post(tickRunnable)
+                restoreFocusIfActive()
             }
         }
         return START_STICKY
@@ -117,311 +170,353 @@ class PhaseOutService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    // FIX: Service has no dispose() method — super.onDestroy() is correct.
     override fun onDestroy() {
         handler.removeCallbacks(tickRunnable)
-        PhaseOutWindowOverlay.dismiss()
+        handler.removeCallbacks(focusRunnable)
+        cancelAudioTimer()
         super.onDestroy()
     }
 
+    // ─────────────────────────────────────────────────────────
+    //  MAIN TICK  (~60 s)
+    // ─────────────────────────────────────────────────────────
+
     private fun tick() {
         Log.d(TAG, "Tick")
-        checkSchedules()
-        checkPendingFires()
-        checkAudioTimer()
-        checkFocusSession()
+        checkAndFireSchedules()
+        checkRestoreSchedules()
     }
 
-    private fun checkSchedules() {
+    // ─────────────────────────────────────────────────────────
+    //  FIRE SCHEDULES
+    // ─────────────────────────────────────────────────────────
+
+    private fun checkAndFireSchedules() {
         val schedules = PhaseOutDatabase.getEnabledSchedules(this)
         if (schedules.isEmpty()) return
 
-        val cal     = Calendar.getInstance()
-        val nowH    = cal.get(Calendar.HOUR_OF_DAY)
-        val nowM    = cal.get(Calendar.MINUTE)
-        val javaDow = cal.get(Calendar.DAY_OF_WEEK)
-        val dartDow = if (javaDow == Calendar.SUNDAY) 7 else javaDow - 1
-        val todayStr = "${cal.get(Calendar.YEAR)}-${cal.get(Calendar.MONTH)}-${cal.get(Calendar.DAY_OF_MONTH)}"
+        val now   = Calendar.getInstance()
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        // Convert Android DAY_OF_WEEK (1=Sun) to PhaseOut (1=Mon…7=Sun)
+        val todayDow = when (now.get(Calendar.DAY_OF_WEEK)) {
+            Calendar.MONDAY    -> 1
+            Calendar.TUESDAY   -> 2
+            Calendar.WEDNESDAY -> 3
+            Calendar.THURSDAY  -> 4
+            Calendar.FRIDAY    -> 5
+            Calendar.SATURDAY  -> 6
+            Calendar.SUNDAY    -> 7
+            else               -> 1
+        }
+
+        val todayKey = todayDateKey(now)
+
+        for (s in schedules) {
+            if (!s.daysOfWeek.contains(todayDow)) continue
+
+            // Check within ±90 s of trigger time
+            val triggerCal = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, s.triggerHour)
+                set(Calendar.MINUTE, s.triggerMin)
+                set(Calendar.SECOND, 0)
+            }
+            if (abs(now.timeInMillis - triggerCal.timeInMillis) > 90_000) continue
+
+            // Only fire once per schedule per day
+            val firedKey = "phaseout.fired_${s.id}_$todayKey"
+            if (prefs.getBoolean(firedKey, false)) continue
+
+            // Skip-today — Dart ScheduleActionService writes
+            // "flutter.phaseout.skip_<id>" = "YYYY-MM-DD"
+            val skipKey = "flutter.phaseout.skip_${s.id}"
+            if (prefs.getString(skipKey, null) == todayKey) {
+                Log.i(TAG, "Schedule '${s.name}' skipped today")
+                continue
+            }
+
+            // Snooze — Dart writes "flutter.phaseout.snooze_until_<id>"
+            val snoozeKey   = "flutter.phaseout.snooze_until_${s.id}"
+            val snoozeUntil = prefs.getLong(snoozeKey, 0L)
+            if (snoozeUntil > now.timeInMillis) {
+                Log.i(TAG, "Schedule '${s.name}' snoozed until $snoozeUntil")
+                continue
+            }
+            if (snoozeUntil > 0) prefs.edit().remove(snoozeKey).apply()
+
+            // ── Fire ──────────────────────────────────────────
+            Log.i(TAG, "Firing '${s.name}' actions=${s.actions}")
+            prefs.edit().putBoolean(firedKey, true).apply()
+            fireActions(s.actions)
+        }
+    }
+
+    private fun fireActions(actions: List<String>) {
+        for (action in actions) {
+            when (action) {
+                "stop_media"        -> stopAllMedia()
+                "do_not_disturb"    -> enableDoNotDisturb()
+                "dim_brightness"    -> dimBrightness(30)
+                "go_home"           -> goHome()
+                "send_notification" -> sendChargeReminder()
+                else                -> Log.w(TAG, "Unknown action: $action")
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  RESTORE SCHEDULES  (end-time / wakeTime)
+    // ─────────────────────────────────────────────────────────
+
+    private fun checkRestoreSchedules() {
+        val schedules = PhaseOutDatabase.getEnabledSchedules(this)
+        if (schedules.isEmpty()) return
+
+        val now   = Calendar.getInstance()
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
         for (s in schedules) {
-            val minuteKey = "$todayStr-$nowH-$nowM"
-            if (s.actions.contains("send_notification")) checkPreNotif(s, cal, nowH, nowM)
-            if (lastFired[s.id] == minuteKey) continue
-            if (!s.daysOfWeek.contains(dartDow)) continue
-            if (s.triggerHour != nowH || s.triggerMin != nowM) continue
+            val wakeHour = s.wakeHour   ?: continue
+            val wakeMin  = s.wakeMinute ?: continue
 
-            if (prefs.getString(skipKey(s.id), "") == todayKey()) {
-                Log.i(TAG, "'${s.name}' skipped today"); lastFired[s.id] = minuteKey; continue
+            val restoreCal = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, wakeHour)
+                set(Calendar.MINUTE, wakeMin)
+                set(Calendar.SECOND, 0)
             }
-            val snoozeUntil = prefs.getLong(snoozeKey(s.id), 0L)
-            if (snoozeUntil > System.currentTimeMillis()) {
-                Log.i(TAG, "'${s.name}' snoozed"); lastFired[s.id] = minuteKey; continue
+            if (abs(now.timeInMillis - restoreCal.timeInMillis) > 90_000) continue
+
+            val todayKey = todayDateKey(now)
+            val doneKey  = "phaseout.restored_${s.id}_$todayKey"
+            if (prefs.getBoolean(doneKey, false)) continue
+
+            val actions  = s.actions.toSet()
+            var restored = false
+            if (actions.contains("do_not_disturb")) { disableDoNotDisturb(); restored = true }
+            if (actions.contains("dim_brightness"))  { restoreBrightness();   restored = true }
+
+            if (restored) {
+                prefs.edit().putBoolean(doneKey, true).apply()
+                Log.i(TAG, "Restored '${s.name}'")
             }
-
-            Log.i(TAG, "*** SCHEDULE READY '${s.name}'")
-            lastFired[s.id] = minuteKey
-            sendPreActionNotification(s)
-            pendingFire[s.id] = System.currentTimeMillis() + 30_000L
         }
     }
 
-    private fun checkPendingFires() {
-        val now   = System.currentTimeMillis()
-        val toFire = pendingFire.filter { it.value <= now }
-        for ((id, _) in toFire) {
-            pendingFire.remove(id)
-            val s = PhaseOutDatabase.getEnabledSchedules(this).firstOrNull { it.id == id } ?: continue
-            Log.i(TAG, "Auto-firing '${s.name}'")
-            for (a in s.actions) executeAction(a, s)
+    // ─────────────────────────────────────────────────────────
+    //  AUDIO TIMER  (precise — uses Handler.postDelayed)
+    // ─────────────────────────────────────────────────────────
+
+    private fun scheduleAudioTimer(expiryMs: Long) {
+        cancelAudioTimer()
+        val delay = expiryMs - System.currentTimeMillis()
+        if (delay <= 0) { stopAllMedia(); return }
+
+        val r = Runnable {
+            Log.i(TAG, "Audio timer expired — stopping media")
+            stopAllMedia()
+            timerRunnable = null
+        }
+        timerRunnable = r
+        handler.postDelayed(r, delay)
+        Log.i(TAG, "Audio timer set, fires in ${delay / 1000}s")
+    }
+
+    private fun cancelAudioTimer() {
+        timerRunnable?.let { handler.removeCallbacks(it) }
+        timerRunnable = null
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  FOCUS BLOCKING  (every 1 s)
+    // ─────────────────────────────────────────────────────────
+
+    private fun checkFocusAndBlock() {
+        if (!focusActive) return
+        try {
+            val now   = System.currentTimeMillis()
+            val usm   = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_BEST, now - 2000L, now)
+                ?: return
+            val fg = stats
+                .filter { it.totalTimeInForeground > 0 }
+                .maxByOrNull { it.lastTimeUsed }
+                ?.packageName ?: return
+
+            val skip = setOf(
+                packageName,
+                "com.android.launcher", "com.android.launcher3",
+                "com.samsung.android.launcher",
+                "com.google.android.apps.nexuslauncher",
+                "com.miui.home", "com.huawei.android.launcher",
+                "com.oneplus.launcher", "com.oppo.launcher",
+                "com.android.dialer", "com.samsung.android.dialer",
+                "com.android.mms", "com.samsung.android.messaging",
+            )
+            if (skip.contains(fg) || focusAllowlist.contains(fg)) {
+                PhaseOutWindowOverlay.dismiss()
+                return
+            }
+            if (!PhaseOutWindowOverlay.isShowing()) {
+                Log.i(TAG, "Blocking: $fg")
+                PhaseOutWindowOverlay.show(this, fg)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "checkFocusAndBlock: ${e.message}")
         }
     }
 
-    private fun sendPreActionNotification(s: ScheduleRow) {
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        fun pi(action: String) = PendingIntent.getService(this,
-            s.id * 10 + action.hashCode(),
-            Intent(this, PhaseOutService::class.java).apply {
-                this.action = action; putExtra(EXTRA_SCHEDULE_ID, s.id) },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    // ─────────────────────────────────────────────────────────
+    //  RESTORE FOCUS SESSION AFTER SERVICE RESTART
+    // ─────────────────────────────────────────────────────────
 
-        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        nm.notify(s.id + 1000,
-            NotificationCompat.Builder(this, PREACTION_CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("${s.name} starts in 30 seconds")
-                .setContentText("Tap to snooze or skip — otherwise it runs automatically.")
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setDefaults(NotificationCompat.DEFAULT_ALL)
-                .setSound(uri)
-                .setAutoCancel(true)
-                .setTimeoutAfter(35_000)
-                .addAction(android.R.drawable.ic_media_next, "Snooze 15m", pi(ACTION_SNOOZE_15))
-                .addAction(android.R.drawable.ic_media_next, "Snooze 30m", pi(ACTION_SNOOZE_30))
-                .addAction(android.R.drawable.ic_delete,     "Skip today", pi(ACTION_SKIP_TODAY))
-                .addAction(android.R.drawable.ic_media_play, "Run now",    pi(ACTION_FIRE_NOW))
-                .build())
-    }
-
-    private fun checkPreNotif(s: ScheduleRow, cal: Calendar, nowH: Int, nowM: Int) {
-        val diff = (s.triggerHour * 60 + s.triggerMin) - (nowH * 60 + nowM)
-        if (diff !in 28..32) return
-        val key = "${s.id}-${cal.get(Calendar.YEAR)}-${cal.get(Calendar.DAY_OF_YEAR)}"
-        if (preNotifFired.contains(key)) return
-        sendAlert("Bedtime reminder ⏰", "'${s.name}' starts in $diff minutes.")
-        preNotifFired.add(key)
-    }
-
-    private fun executeAction(action: String, s: ScheduleRow) {
-        when (action) {
-            "stop_media"        -> stopAllMedia()
-            "send_notification" -> sendAlert("Wind-down time 🌙", "'${s.name}' has started.")
-            "go_home"           -> goHome()
-            "do_not_disturb"    -> enableDoNotDisturb()
-            "dim_brightness"    -> dimBrightness()
-            "set_morning_alarm" -> setMorningAlarm(s.wakeHour ?: 7, s.wakeMinute ?: 0)
-        }
-    }
-
-    private fun setSnooze(id: Int, minutes: Int) {
-        val until = System.currentTimeMillis() + (minutes * 60_000L)
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putLong(snoozeKey(id), until).apply()
-        pendingFire.remove(id)
-        sendAlert("Snoozed ⏰", "Schedule snoozed for $minutes minutes.")
-        Log.i(TAG, "Schedule $id snoozed $minutes min")
-    }
-
-    private fun setSkipToday(id: Int) {
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putString(skipKey(id), todayKey()).apply()
-        pendingFire.remove(id)
-        sendAlert("Skipped", "Schedule skipped for today.")
-        Log.i(TAG, "Schedule $id skipped")
-    }
-
-    private fun checkAudioTimer() {
-        val prefs    = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val active   = prefs.getBoolean(KEY_TIMER_ACTIVE, false); if (!active) return
-        val expiryMs = prefs.getLong(KEY_TIMER_EXPIRY, 0L); if (expiryMs == 0L) return
-        val remaining = expiryMs - System.currentTimeMillis()
-        if (remaining > 0) { Log.d(TAG, "Timer: ${(remaining/60000).toInt()+1}m left"); return }
-        Log.i(TAG, "Audio timer expired")
-        stopAllMedia(); goHome()
-        sendAlert("Sleep timer ended 🌙", "Audio stopped. Good night.")
-        prefs.edit().remove(KEY_TIMER_EXPIRY).putBoolean(KEY_TIMER_ACTIVE, false).apply()
-    }
-
-    private fun checkFocusSession() {
+    private fun restoreFocusIfActive() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(KEY_FOCUS_ACTIVE, false)) return
-        val al = try {
-            val arr = org.json.JSONArray(prefs.getString(KEY_FOCUS_ALLOWLIST,"[]")?:"[]")
-            (0 until arr.length()).map { arr.getString(it) }
-        } catch (e: Exception) { emptyList() }
-        val fg = getForegroundApp() ?: return
-        if (al.contains(fg)) { if (PhaseOutWindowOverlay.isShowing()) handler.post { PhaseOutWindowOverlay.dismiss() }; return }
-        val now = System.currentTimeMillis()
-        if (now - lastFocusBlock < 30_000L) return
-        lastFocusBlock = now
-        if (PhaseOutWindowOverlay.canDraw(this))
-            handler.post { PhaseOutWindowOverlay.dismiss(); PhaseOutWindowOverlay.show(this, fg) }
-        else sendAlert("Focus mode active", "$fg is blocked.")
+        val saved = prefs.getString(KEY_FOCUS_ALLOWLIST, "") ?: ""
+        focusAllowlist = if (saved.isEmpty()) mutableListOf()
+                         else saved.split(",").toMutableList()
+        focusActive = true
+        handler.post(focusRunnable)
+        Log.i(TAG, "Focus session restored after restart")
     }
 
-    private fun stopAllMedia(): Boolean {
-        return try {
-            if (isNotificationListenerEnabled()) {
-                val msm = getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
-                val cn  = ComponentName(this, PhaseOutNotificationListener::class.java)
-                try {
-                    val sessions = msm.getActiveSessions(cn)
-                    Log.d(TAG, "Active sessions: ${sessions.size}")
-                    for (s in sessions) { try { s.transportControls.pause(); s.transportControls.stop() } catch (_: Exception) {} }
-                } catch (e: SecurityException) { Log.w(TAG, "getActiveSessions denied") }
-            }
-            releaseAudioFocus(); true
-        } catch (e: Exception) { false }
+    // ─────────────────────────────────────────────────────────
+    //  SYSTEM ACTIONS
+    // ─────────────────────────────────────────────────────────
+
+    private fun dimBrightness(level: Int) {
+        if (!Settings.System.canWrite(this)) {
+            Log.w(TAG, "dimBrightness: WRITE_SETTINGS not granted"); return
+        }
+        val cr    = contentResolver
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val current = Settings.System.getInt(cr, Settings.System.SCREEN_BRIGHTNESS, 128)
+        prefs.edit().putInt(KEY_BRIGHTNESS_PREV, current).apply()
+        Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS_MODE,
+            Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
+        Settings.System.putInt(cr, Settings.System.SCREEN_BRIGHTNESS, level.coerceIn(1, 255))
+        Log.i(TAG, "Brightness dimmed to $level (was $current)")
     }
 
-    private fun releaseAudioFocus() {
-        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-            am.abandonAudioFocusRequest(android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).build())
-        else @Suppress("DEPRECATION") am.abandonAudioFocus(null)
-    }
-
-    private fun goHome() {
-        try { startActivity(Intent(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_HOME); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
-        } catch (e: Exception) { Log.e(TAG, "goHome: ${e.message}") }
+    private fun restoreBrightness() {
+        if (!Settings.System.canWrite(this)) {
+            Log.w(TAG, "restoreBrightness: WRITE_SETTINGS not granted"); return
+        }
+        val saved = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_BRIGHTNESS_PREV, -1)
+        if (saved < 0) { Log.w(TAG, "restoreBrightness: nothing saved"); return }
+        Settings.System.putInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, saved)
+        Log.i(TAG, "Brightness restored to $saved")
     }
 
     private fun enableDoNotDisturb() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (!nm.isNotificationPolicyAccessGranted) return
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putInt(KEY_DND_PREV_FILTER, nm.currentInterruptionFilter)
-            .putBoolean(KEY_BEDTIME_ACTIVE, true).apply()
-        nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
-    }
-
-    private fun dimBrightness() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.System.canWrite(this)) return
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putInt(KEY_BRIGHTNESS_PREV,
-            Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128))
-            .putBoolean(KEY_BEDTIME_ACTIVE, true).apply()
-        Settings.System.putInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, 13)
-    }
-
-    private fun setMorningAlarm(hour: Int, minute: Int) {
-        val am  = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val cal = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour); set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-            if (timeInMillis < System.currentTimeMillis()) add(Calendar.DAY_OF_MONTH, 1)
+        if (!nm.isNotificationPolicyAccessGranted) {
+            Log.w(TAG, "enableDnd: access not granted"); return
         }
-        val pi = PendingIntent.getService(this, 999,
-            Intent(this, PhaseOutService::class.java).apply { action = ACTION_MORNING_RESTORE },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        am.setAlarmClock(AlarmManager.AlarmClockInfo(cal.timeInMillis, pi), pi)
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putInt(KEY_DND_PREV_FILTER, nm.currentInterruptionFilter).apply()
+        nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
+        Log.i(TAG, "DND enabled")
     }
 
-    private fun performMorningRestore() {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        if (!prefs.getBoolean(KEY_BEDTIME_ACTIVE, false)) return
+    private fun disableDoNotDisturb() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.setInterruptionFilter(prefs.getInt(KEY_DND_PREV_FILTER, NotificationManager.INTERRUPTION_FILTER_ALL))
-        Settings.System.putInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, prefs.getInt(KEY_BRIGHTNESS_PREV, 128))
-        prefs.edit().putBoolean(KEY_BEDTIME_ACTIVE, false).apply()
-        sendAlert("Good morning! ☀️", "Brightness and sound restored.")
+        if (!nm.isNotificationPolicyAccessGranted) {
+            Log.w(TAG, "disableDnd: access not granted"); return
+        }
+        val prev = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_DND_PREV_FILTER, NotificationManager.INTERRUPTION_FILTER_ALL)
+        nm.setInterruptionFilter(prev)
+        Log.i(TAG, "DND disabled, restored filter=$prev")
     }
 
-    private fun getForegroundApp(): String? {
-        if (!hasUsagePermission()) return null
+    private fun sendChargeReminder() {
+        val nm  = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        nm.notify(NOTIF_ID_CHARGE,
+            NotificationCompat.Builder(this, CHARGE_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("Time to charge")
+                .setContentText("Plug in your phone before you sleep.")
+                .setSound(uri)
+                .setAutoCancel(true)
+                .build())
+        Log.i(TAG, "Charge reminder sent")
+    }
+
+    // FIX: pass NLS ComponentName — getActiveSessions(null)
+    // silently returns nothing on real non-rooted devices.
+    private fun stopAllMedia(): Boolean {
         return try {
-            val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-            val now = System.currentTimeMillis()
-            usm.queryUsageStats(UsageStatsManager.INTERVAL_BEST, now - 10_000L, now)
-                ?.maxByOrNull { it.lastTimeUsed }?.packageName
-        } catch (e: Exception) { null }
+            val msm = getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
+            val sessions = msm.getActiveSessions(
+                PhaseOutNotificationListener.componentName(this)
+            )
+            sessions.forEach { s ->
+                try {
+                    s.transportControls.pause()
+                    s.transportControls.stop()
+                } catch (_: Exception) {}
+            }
+            Log.i(TAG, "stopAllMedia: paused ${sessions.size} session(s)")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "stopAllMedia failed: ${e.message}")
+            // Fallback: abandon audio focus so well-behaved apps pause
+            try {
+                (getSystemService(Context.AUDIO_SERVICE) as AudioManager)
+                    .abandonAudioFocus(null)
+            } catch (_: Exception) {}
+            false
+        }
     }
 
-    private fun sendAlert(title: String, body: String) {
+    private fun goHome() {
         try {
-            val nm  = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val pi  = PendingIntent.getActivity(this, 0,
-                packageManager.getLaunchIntentForPackage(packageName),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            nm.notify(System.currentTimeMillis().toInt(),
-                NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentTitle(title).setContentText(body)
-                    .setAutoCancel(true).setContentIntent(pi)
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setDefaults(NotificationCompat.DEFAULT_ALL)
-                    .setSound(uri).setVibrate(longArrayOf(0, 250, 250, 250))
-                    .build())
-        } catch (e: Exception) { Log.e(TAG, "sendAlert: ${e.message}") }
+            startActivity(Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "goHome: ${e.message}")
+        }
     }
 
-    private fun isNotificationListenerEnabled(): Boolean {
-        val s = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: return false
-        return s.contains(ComponentName(this, PhaseOutNotificationListener::class.java).flattenToString()) || s.contains(packageName)
-    }
-
-    private fun hasUsagePermission(): Boolean {
-        return try {
-            val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-                appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
-            else @Suppress("DEPRECATION") appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
-            mode == AppOpsManager.MODE_ALLOWED
-        } catch (e: Exception) { false }
-    }
-
-    private fun saveFocusState(active: Boolean, allowlist: List<String>) {
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putBoolean(KEY_FOCUS_ACTIVE, active)
-            .putString(KEY_FOCUS_ALLOWLIST, org.json.JSONArray(allowlist).toString()).apply()
-    }
-
-    private fun saveTimerState(active: Boolean, expiryMs: Long) {
-        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putBoolean(KEY_TIMER_ACTIVE, active).putLong(KEY_TIMER_EXPIRY, expiryMs).apply()
-    }
+    // ─────────────────────────────────────────────────────────
+    //  FOREGROUND + CHANNELS
+    // ─────────────────────────────────────────────────────────
 
     private fun startForegroundCompat() {
         val notif = NotificationCompat.Builder(this, NOTIF_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle("PhaseOut is active").setContentText("Monitoring your schedules")
-            .setOngoing(true).build()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-            startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        else startForeground(NOTIF_ID, notif)
+            .setContentTitle("PhaseOut active")
+            .setContentText("Monitoring schedules")
+            .setOngoing(true)
+            .build()
+        startForeground(NOTIF_ID, notif)
     }
 
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val nm  = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        val aa  = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.createNotificationChannel(
+            NotificationChannel(NOTIF_CHANNEL_ID, "Service", NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(
+            NotificationChannel(ALERT_CHANNEL_ID, "Alerts", NotificationManager.IMPORTANCE_HIGH))
+        nm.createNotificationChannel(
+            NotificationChannel(CHARGE_CHANNEL_ID, "Charge reminder", NotificationManager.IMPORTANCE_DEFAULT))
+    }
 
-        nm.createNotificationChannel(NotificationChannel(
-            NOTIF_CHANNEL_ID, "PhaseOut Service", NotificationManager.IMPORTANCE_LOW)
-            .apply { setSound(null, null); enableVibration(false) })
+    // ─────────────────────────────────────────────────────────
+    //  UTILITIES
+    // ─────────────────────────────────────────────────────────
 
-        nm.createNotificationChannel(NotificationChannel(
-            ALERT_CHANNEL_ID, "PhaseOut Alerts", NotificationManager.IMPORTANCE_HIGH)
-            .apply { enableVibration(true); vibrationPattern = longArrayOf(0,250,250,250); setSound(uri, aa) })
-
-        nm.createNotificationChannel(NotificationChannel(
-            PREACTION_CHANNEL, "Schedule Reminders", NotificationManager.IMPORTANCE_HIGH)
-            .apply { description = "30-second warning before a schedule fires"; enableVibration(true); setSound(uri, aa) })
-
-        Log.i(TAG, "Notification channels created (IMPORTANCE_HIGH + sound)")
+    private fun todayDateKey(cal: Calendar): String {
+        val y = cal.get(Calendar.YEAR)
+        val m = (cal.get(Calendar.MONTH) + 1).toString().padStart(2, '0')
+        val d = cal.get(Calendar.DAY_OF_MONTH).toString().padStart(2, '0')
+        return "$y-$m-$d"
     }
 }

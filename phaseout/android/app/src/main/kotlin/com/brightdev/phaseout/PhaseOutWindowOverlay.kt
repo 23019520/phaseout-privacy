@@ -25,7 +25,7 @@ object PhaseOutWindowOverlay {
 
     private var windowManager:   WindowManager? = null
     private var overlayView:     View?          = null
-    private var handler          = Handler(Looper.getMainLooper())
+    private val handler          = Handler(Looper.getMainLooper())
     private var dismissRunnable: Runnable?      = null
 
     // ── Show ──────────────────────────────────────────────────
@@ -33,16 +33,16 @@ object PhaseOutWindowOverlay {
         if (!canDraw(context)) { Log.w(TAG, "SYSTEM_ALERT_WINDOW not granted"); return }
         if (overlayView != null) { Log.d(TAG, "Already showing"); return }
         try {
-            var wm   = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            val wm   = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             windowManager = wm
-            var view = buildView(context, blockedPackage)
+            val view = buildView(context, blockedPackage)
             overlayView  = view
 
-            var type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
 
-            var params = WindowManager.LayoutParams(
+            val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT,
                 type,
@@ -55,7 +55,7 @@ object PhaseOutWindowOverlay {
             wm.addView(view, params)
             Log.i(TAG, "Overlay shown: $blockedPackage")
 
-            var r = Runnable { dismiss(); goHome(context) }
+            val r = Runnable { dismiss(); goHome(context) }
             dismissRunnable = r
             handler.postDelayed(r, AUTO_DISMISS_MS)
 
@@ -95,26 +95,26 @@ object PhaseOutWindowOverlay {
     // Rule: every addView call includes explicit LayoutParams.
     // No view.layoutParams = ... anywhere in this file.
     private fun buildView(context: Context, blockedPackage: String): View {
-        var MATCH = LinearLayout.LayoutParams.MATCH_PARENT
-        var WRAP  = LinearLayout.LayoutParams.WRAP_CONTENT
-        var margin = dpToPx(context, 30)
+        val MATCH = LinearLayout.LayoutParams.MATCH_PARENT
+        val WRAP  = LinearLayout.LayoutParams.WRAP_CONTENT
+        val margin = dpToPx(context, 30)
 
         // Root: FrameLayout fills window
-        var root = FrameLayout(context)
+        val root = FrameLayout(context)
         root.setBackgroundColor(Color.argb(236, 4, 13, 26))
 
         // Content: vertical LinearLayout centred in root
-        var content = LinearLayout(context)
+        val content = LinearLayout(context)
         content.orientation = LinearLayout.VERTICAL
         content.gravity     = Gravity.CENTER_HORIZONTAL
 
         // ── Moon ────────────────────────────────────────────
-        var moonSz   = dpToPx(context, 106)
-        var moonView = object : View(context) {
+        val moonSz   = dpToPx(context, 106)
+        val moonView = object : View(context) {
             override fun onDraw(canvas: Canvas) {
-                var w  = width.toFloat()
-                var h  = height.toFloat()
-                var cx = w / 2; var cy = h / 2
+                val w  = width.toFloat()
+                val h  = height.toFloat()
+                val cx = w / 2; val cy = h / 2
 
                 // Glow
                 canvas.drawCircle(cx, cy, w * 0.46f, Paint().apply {
@@ -128,7 +128,7 @@ object PhaseOutWindowOverlay {
                 canvas.drawCircle(cx + w*0.13f, cy - h*0.09f, w*0.28f,
                     Paint().apply { color = Color.argb(255, 4, 13, 26); isAntiAlias = true })
                 // Eyes
-                var eye = Paint().apply { color = Color.argb(190, 10, 24, 40); isAntiAlias = true }
+                val eye = Paint().apply { color = Color.argb(190, 10, 24, 40); isAntiAlias = true }
                 canvas.drawCircle(cx - w*0.09f, cy - h*0.03f, w*0.03f,  eye)
                 canvas.drawCircle(cx,            cy - h*0.05f, w*0.025f, eye)
                 // Smile
@@ -143,7 +143,7 @@ object PhaseOutWindowOverlay {
                         isAntiAlias = true
                     })
                 // Stars
-                var star = Paint().apply { color = Color.argb(160, 96, 165, 250); isAntiAlias = true }
+                val star = Paint().apply { color = Color.argb(160, 96, 165, 250); isAntiAlias = true }
                 canvas.drawCircle(cx + w*0.42f, cy - h*0.28f, w*0.024f, star)
                 canvas.drawCircle(cx - w*0.38f, cy - h*0.18f, w*0.018f, star)
             }
@@ -156,10 +156,10 @@ object PhaseOutWindowOverlay {
             LinearLayout.LayoutParams(MATCH, dpToPx(context, 24)))
 
         // ── Blocked chip ────────────────────────────────────
-        var appName = blockedPackage.split(".").last().let {
+        val appName = blockedPackage.split(".").last().let {
             if (it.isEmpty()) blockedPackage else it[0].uppercaseChar() + it.substring(1)
         }
-        var chip = LinearLayout(context)
+        val chip = LinearLayout(context)
         chip.orientation = LinearLayout.HORIZONTAL
         chip.gravity     = Gravity.CENTER
         chip.setPadding(dpToPx(context,12), dpToPx(context,5), dpToPx(context,12), dpToPx(context,5))
@@ -167,7 +167,7 @@ object PhaseOutWindowOverlay {
             setColor(Color.argb(28, 239, 68, 68))
             cornerRadius = dpToPx(context, 99).toFloat()
         }
-        var chipLabel = TextView(context)
+        val chipLabel = TextView(context)
         chipLabel.text     = "$appName is blocked"
         chipLabel.textSize = 12f
         chipLabel.setTextColor(Color.argb(255, 239, 68, 68))
@@ -182,7 +182,7 @@ object PhaseOutWindowOverlay {
             LinearLayout.LayoutParams(MATCH, dpToPx(context, 14)))
 
         // ── Title ──────────────────────────────────────────
-        var title = TextView(context)
+        val title = TextView(context)
         title.text     = "Stay focused."
         title.textSize = 28f
         title.setTextColor(Color.WHITE)
@@ -194,7 +194,7 @@ object PhaseOutWindowOverlay {
             LinearLayout.LayoutParams(MATCH, dpToPx(context, 8)))
 
         // ── Subtitle ────────────────────────────────────────
-        var subtitle = TextView(context)
+        val subtitle = TextView(context)
         subtitle.text     = "This app is blocked during your\nfocus session.\nReturning to home in 15 seconds."
         subtitle.textSize = 13f
         subtitle.setTextColor(Color.argb(130, 255, 255, 255))
@@ -207,10 +207,10 @@ object PhaseOutWindowOverlay {
             LinearLayout.LayoutParams(MATCH, dpToPx(context, 32)))
 
         // ── Open PhaseOut button ─────────────────────────────
-        var openBtn = makeButton(context, "Open PhaseOut",
+        val openBtn = makeButton(context, "Open PhaseOut",
             Color.argb(38, 96, 165, 250), Color.argb(255, 147, 197, 253))
         openBtn.setOnClickListener {
-            var i = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            val i = context.packageManager.getLaunchIntentForPackage(context.packageName)
             i?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             i?.let { context.startActivity(it) }
             dismiss()
@@ -226,7 +226,7 @@ object PhaseOutWindowOverlay {
             LinearLayout.LayoutParams(MATCH, dpToPx(context, 10)))
 
         // ── Go home button ──────────────────────────────────
-        var homeBtn = makeButton(context, "Go to home screen",
+        val homeBtn = makeButton(context, "Go to home screen",
             Color.argb(20, 255, 255, 255), Color.argb(100, 255, 255, 255))
         homeBtn.setOnClickListener { dismiss(); goHome(context) }
         content.addView(homeBtn,
@@ -249,7 +249,7 @@ object PhaseOutWindowOverlay {
     // Returns a plain TextView — no layoutParams set on it.
     // Caller passes LayoutParams to addView().
     private fun makeButton(ctx: Context, label: String, bg: Int, fg: Int): TextView {
-        var tv = TextView(ctx)
+        val tv = TextView(ctx)
         tv.text     = label
         tv.textSize = 14f
         tv.setTextColor(fg)
