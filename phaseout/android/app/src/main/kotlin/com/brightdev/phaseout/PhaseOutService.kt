@@ -1,17 +1,12 @@
 // ─────────────────────────────────────────────────────────────
-//  PhaseOutService.kt  — v7  (complete)
+//  PhaseOutService.kt  — v8
 //
-//  Fixed from v6:
-//  1. onDestroy: removed super.dispose() (Service has no such
-//     method — was the crash). Uses super.onDestroy() correctly.
-//  2. stopAllMedia: passes NLS ComponentName so getActiveSessions
-//     actually works on real devices (null fails without root).
-//  3. Added checkAndFireSchedules() called from tick() — without
-//     this, schedules were never fired by the service.
-//  4. Audio timer uses Handler.postDelayed (precise) instead of
-//     SharedPrefs polling every 60s (up to 60s late).
-//  5. Imports cleaned up — no more inline java.util.Calendar or
-//     kotlin.math.abs references scattered through the file.
+//  Refactor: Allowlist → Blacklist architecture
+//  - EXTRA_ALLOWLIST     → EXTRA_BLOCKED_APPS
+//  - KEY_FOCUS_ALLOWLIST → KEY_FOCUS_BLOCKED_APPS
+//  - focusAllowlist      → focusBlockedApps
+//  - checkFocusAndBlock: block if fg IS in focusBlockedApps
+//    (previously blocked if fg was NOT in focusAllowlist)
 // ─────────────────────────────────────────────────────────────
 
 package com.brightdev.phaseout
@@ -51,7 +46,7 @@ class PhaseOutService : Service() {
         // ── Extras ─────────────────────────────────────────────
         const val EXTRA_BRIGHTNESS_LEVEL = "brightness_level"
         const val EXTRA_EXPIRY_MS        = "extra_expiry_ms"
-        const val EXTRA_ALLOWLIST        = "extra_allowlist"
+        const val EXTRA_BLOCKED_APPS     = "extra_blocked_apps"   // was: EXTRA_ALLOWLIST
 
         // ── Notification channels ──────────────────────────────
         private const val NOTIF_CHANNEL_ID  = "phaseout_native_service"
@@ -60,24 +55,35 @@ class PhaseOutService : Service() {
         private const val NOTIF_ID          = 101
         private const val NOTIF_ID_CHARGE   = 50
         private const val TICK_MS           = 60_000L
-        private const val FOCUS_POLL_MS     = 1_000L
+        private const val FOCUS_POLL_MS     = 700L                // was: 1_000L
 
         // ── SharedPreferences ──────────────────────────────────
-        // "FlutterSharedPreferences" is Flutter's default file —
-        // Dart and Kotlin share the same file so snooze/skip keys
-        // written by Dart are readable here without any bridge.
-        private const val PREFS_NAME          = "FlutterSharedPreferences"
-        private const val KEY_DND_PREV_FILTER = "phaseout.prev_dnd_filter"
-        private const val KEY_BRIGHTNESS_PREV = "phaseout.prev_brightness"
-        private const val KEY_FOCUS_ACTIVE    = "flutter.focus_session_active"
-        private const val KEY_FOCUS_ALLOWLIST = "flutter.focus_session_allowlist"
+        private const val PREFS_NAME              = "FlutterSharedPreferences"
+        private const val KEY_DND_PREV_FILTER     = "phaseout.prev_dnd_filter"
+        private const val KEY_BRIGHTNESS_PREV     = "phaseout.prev_brightness"
+        private const val KEY_FOCUS_ACTIVE        = "flutter.focus_session_active"
+        private const val KEY_FOCUS_BLOCKED_APPS  = "flutter.focus_blocked_apps"  // was: KEY_FOCUS_ALLOWLIST
+
+        // Packages that can never be blocked regardless of user selection.
+        // Minimal set — blacklist model makes most guards unnecessary,
+        // but self-protection and emergency dialer are non-negotiable.
+        private val NEVER_BLOCK = setOf(
+            "com.brightdev.phaseout",
+            "com.android.launcher", "com.android.launcher2", "com.android.launcher3",
+            "com.samsung.android.launcher",
+            "com.google.android.apps.nexuslauncher",
+            "com.miui.home", "com.huawei.android.launcher",
+            "com.oneplus.launcher", "com.oppo.launcher", "com.vivo.launcher",
+            "com.tcl.launcher", "com.sec.android.app.launcher",
+            "com.android.dialer", "com.samsung.android.dialer", "com.google.android.dialer",
+            "com.android.mms", "com.samsung.android.messaging", "com.google.android.apps.messaging",
+        )
     }
 
-    private val handler        = Handler(Looper.getMainLooper())
-    private var focusAllowlist = mutableListOf<String>()
-    private var focusActive    = false
+    private val handler          = Handler(Looper.getMainLooper())
+    private var focusBlockedApps = mutableListOf<String>()   // was: focusAllowlist
+    private var focusActive      = false
 
-    // Precise audio timer — fires exactly at expiry via postDelayed
     private var timerRunnable: Runnable? = null
 
     private val tickRunnable = object : Runnable {
@@ -104,7 +110,7 @@ class PhaseOutService : Service() {
         super.onCreate()
         createNotificationChannels()
         startForegroundCompat()
-        Log.i(TAG, "Service v7 started")
+        Log.i(TAG, "Service v8 started")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -120,15 +126,15 @@ class PhaseOutService : Service() {
             ACTION_CANCEL_TIMER -> cancelAudioTimer()
 
             ACTION_START_FOCUS -> {
-                val allowlist = intent.getStringArrayListExtra(EXTRA_ALLOWLIST) ?: arrayListOf()
-                focusAllowlist = allowlist.toMutableList()
-                focusActive    = true
+                val blockedApps = intent.getStringArrayListExtra(EXTRA_BLOCKED_APPS) ?: arrayListOf()
+                focusBlockedApps = blockedApps.toMutableList()
+                focusActive      = true
                 getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
                     .putBoolean(KEY_FOCUS_ACTIVE, true)
-                    .putString(KEY_FOCUS_ALLOWLIST, allowlist.joinToString(","))
+                    .putString(KEY_FOCUS_BLOCKED_APPS, blockedApps.joinToString(","))
                     .apply()
                 handler.post(focusRunnable)
-                Log.i(TAG, "Focus started — allowlist: $allowlist")
+                Log.i(TAG, "Focus started — blockedApps: $blockedApps")
             }
 
             ACTION_STOP_FOCUS -> {
@@ -159,7 +165,6 @@ class PhaseOutService : Service() {
             }
 
             null -> {
-                // Initial start — kick off the tick loop
                 handler.removeCallbacks(tickRunnable)
                 handler.post(tickRunnable)
                 restoreFocusIfActive()
@@ -170,7 +175,6 @@ class PhaseOutService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // FIX: Service has no dispose() method — super.onDestroy() is correct.
     override fun onDestroy() {
         handler.removeCallbacks(tickRunnable)
         handler.removeCallbacks(focusRunnable)
@@ -199,7 +203,6 @@ class PhaseOutService : Service() {
         val now   = Calendar.getInstance()
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-        // Convert Android DAY_OF_WEEK (1=Sun) to PhaseOut (1=Mon…7=Sun)
         val todayDow = when (now.get(Calendar.DAY_OF_WEEK)) {
             Calendar.MONDAY    -> 1
             Calendar.TUESDAY   -> 2
@@ -216,7 +219,6 @@ class PhaseOutService : Service() {
         for (s in schedules) {
             if (!s.daysOfWeek.contains(todayDow)) continue
 
-            // Check within ±90 s of trigger time
             val triggerCal = Calendar.getInstance().apply {
                 set(Calendar.HOUR_OF_DAY, s.triggerHour)
                 set(Calendar.MINUTE, s.triggerMin)
@@ -224,19 +226,15 @@ class PhaseOutService : Service() {
             }
             if (abs(now.timeInMillis - triggerCal.timeInMillis) > 90_000) continue
 
-            // Only fire once per schedule per day
             val firedKey = "phaseout.fired_${s.id}_$todayKey"
             if (prefs.getBoolean(firedKey, false)) continue
 
-            // Skip-today — Dart ScheduleActionService writes
-            // "flutter.phaseout.skip_<id>" = "YYYY-MM-DD"
             val skipKey = "flutter.phaseout.skip_${s.id}"
             if (prefs.getString(skipKey, null) == todayKey) {
                 Log.i(TAG, "Schedule '${s.name}' skipped today")
                 continue
             }
 
-            // Snooze — Dart writes "flutter.phaseout.snooze_until_<id>"
             val snoozeKey   = "flutter.phaseout.snooze_until_${s.id}"
             val snoozeUntil = prefs.getLong(snoozeKey, 0L)
             if (snoozeUntil > now.timeInMillis) {
@@ -245,7 +243,6 @@ class PhaseOutService : Service() {
             }
             if (snoozeUntil > 0) prefs.edit().remove(snoozeKey).apply()
 
-            // ── Fire ──────────────────────────────────────────
             Log.i(TAG, "Firing '${s.name}' actions=${s.actions}")
             prefs.edit().putBoolean(firedKey, true).apply()
             fireActions(s.actions)
@@ -266,7 +263,7 @@ class PhaseOutService : Service() {
     }
 
     // ─────────────────────────────────────────────────────────
-    //  RESTORE SCHEDULES  (end-time / wakeTime)
+    //  RESTORE SCHEDULES
     // ─────────────────────────────────────────────────────────
 
     private fun checkRestoreSchedules() {
@@ -304,7 +301,7 @@ class PhaseOutService : Service() {
     }
 
     // ─────────────────────────────────────────────────────────
-    //  AUDIO TIMER  (precise — uses Handler.postDelayed)
+    //  AUDIO TIMER
     // ─────────────────────────────────────────────────────────
 
     private fun scheduleAudioTimer(expiryMs: Long) {
@@ -328,7 +325,16 @@ class PhaseOutService : Service() {
     }
 
     // ─────────────────────────────────────────────────────────
-    //  FOCUS BLOCKING  (every 1 s)
+    //  FOCUS BLOCKING  (every 700 ms)
+    //
+    //  Blacklist model:
+    //    - If fg is in NEVER_BLOCK  → dismiss overlay, return
+    //    - If fg is NOT in focusBlockedApps → dismiss overlay, return
+    //    - Otherwise → show overlay
+    //
+    //  This is the core inversion from v7. System UI, launchers,
+    //  OEM overlays, and permission dialogs are never in
+    //  focusBlockedApps so they pass through automatically.
     // ─────────────────────────────────────────────────────────
 
     private fun checkFocusAndBlock() {
@@ -343,20 +349,19 @@ class PhaseOutService : Service() {
                 .maxByOrNull { it.lastTimeUsed }
                 ?.packageName ?: return
 
-            val skip = setOf(
-                packageName,
-                "com.android.launcher", "com.android.launcher3",
-                "com.samsung.android.launcher",
-                "com.google.android.apps.nexuslauncher",
-                "com.miui.home", "com.huawei.android.launcher",
-                "com.oneplus.launcher", "com.oppo.launcher",
-                "com.android.dialer", "com.samsung.android.dialer",
-                "com.android.mms", "com.samsung.android.messaging",
-            )
-            if (skip.contains(fg) || focusAllowlist.contains(fg)) {
+            // Step 1: permanent safe list (self + launchers + emergency)
+            if (NEVER_BLOCK.contains(fg)) {
                 PhaseOutWindowOverlay.dismiss()
                 return
             }
+
+            // Step 2: blacklist check — only block explicitly selected apps
+            if (!focusBlockedApps.contains(fg)) {
+                PhaseOutWindowOverlay.dismiss()
+                return
+            }
+
+            // Step 3: show overlay if not already visible
             if (!PhaseOutWindowOverlay.isShowing()) {
                 Log.i(TAG, "Blocking: $fg")
                 PhaseOutWindowOverlay.show(this, fg)
@@ -373,12 +378,12 @@ class PhaseOutService : Service() {
     private fun restoreFocusIfActive() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(KEY_FOCUS_ACTIVE, false)) return
-        val saved = prefs.getString(KEY_FOCUS_ALLOWLIST, "") ?: ""
-        focusAllowlist = if (saved.isEmpty()) mutableListOf()
-                         else saved.split(",").toMutableList()
+        val saved = prefs.getString(KEY_FOCUS_BLOCKED_APPS, "") ?: ""
+        focusBlockedApps = if (saved.isEmpty()) mutableListOf()
+                           else saved.split(",").toMutableList()
         focusActive = true
         handler.post(focusRunnable)
-        Log.i(TAG, "Focus session restored after restart")
+        Log.i(TAG, "Focus session restored — blockedApps: $focusBlockedApps")
     }
 
     // ─────────────────────────────────────────────────────────
@@ -446,8 +451,6 @@ class PhaseOutService : Service() {
         Log.i(TAG, "Charge reminder sent")
     }
 
-    // FIX: pass NLS ComponentName — getActiveSessions(null)
-    // silently returns nothing on real non-rooted devices.
     private fun stopAllMedia(): Boolean {
         return try {
             val msm = getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
@@ -464,7 +467,6 @@ class PhaseOutService : Service() {
             true
         } catch (e: Exception) {
             Log.e(TAG, "stopAllMedia failed: ${e.message}")
-            // Fallback: abandon audio focus so well-behaved apps pause
             try {
                 (getSystemService(Context.AUDIO_SERVICE) as AudioManager)
                     .abandonAudioFocus(null)

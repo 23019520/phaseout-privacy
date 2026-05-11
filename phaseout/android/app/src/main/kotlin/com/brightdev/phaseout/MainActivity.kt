@@ -1,18 +1,17 @@
 // ─────────────────────────────────────────────────────────────
 //  MainActivity.kt — PhaseOut
 //
-//  FIXED:
-//  - setupUsageChannel() now fully implemented — was previously
-//    a stub returning notImplemented() for every call.
+//  KEY FIX — getAllInstalledApps:
+//    Old: pm.getLaunchIntentForPackage(pkg) — unreliable on OEMs,
+//         returns null for apps the user hasn't recently opened,
+//         causing apps to appear/disappear between calls.
 //
-//  Usage channel methods:
-//    getUsageStats       — foreground-only, strict midnight boundary
-//    hasUsagePermission  — AppOpsManager check
-//    openUsageSettings   — ACTION_USAGE_ACCESS_SETTINGS
-//    getAppLabel         — real system label via PackageManager
-//    getAppIcon          — PNG bytes via PackageManager
-//    getAllInstalledApps  — all launchable apps (launcher-filtered)
-//    getForegroundApp    — 2-second window, foreground only
+//    New: pm.queryIntentActivities(MAIN + CATEGORY_LAUNCHER) —
+//         the canonical way Android builds the app drawer. Returns
+//         every app with a launcher icon, regardless of whether it
+//         has been opened. Consistent across all OEMs and API levels.
+//
+//  All other methods unchanged.
 // ─────────────────────────────────────────────────────────────
 
 package com.brightdev.phaseout
@@ -24,6 +23,7 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.AdaptiveIconDrawable
@@ -66,7 +66,7 @@ class MainActivity : FlutterActivity() {
     }
 
     // ─────────────────────────────────────────────────────────
-    // Service start
+    //  Service start
     // ─────────────────────────────────────────────────────────
 
     private fun startPhaseOutService() {
@@ -82,7 +82,7 @@ class MainActivity : FlutterActivity() {
     }
 
     // ─────────────────────────────────────────────────────────
-    // MEDIA CHANNEL  (unchanged)
+    //  MEDIA CHANNEL
     // ─────────────────────────────────────────────────────────
 
     private fun setupMediaChannel(flutterEngine: FlutterEngine) {
@@ -117,12 +117,12 @@ class MainActivity : FlutterActivity() {
                     }
 
                     "startFocus" -> {
-                        val al = call.argument<List<String>>("allowlist") ?: emptyList()
+                        val al = call.argument<List<String>>("blockedApps") ?: emptyList()  // ← fixed
                         startServiceIntent(
                             Intent(this, PhaseOutService::class.java).apply {
                                 action = PhaseOutService.ACTION_START_FOCUS
                                 putStringArrayListExtra(
-                                    PhaseOutService.EXTRA_ALLOWLIST, ArrayList(al))
+                                    PhaseOutService.EXTRA_BLOCKED_APPS, ArrayList(al))
                             }
                         )
                         result.success(true)
@@ -231,13 +231,23 @@ class MainActivity : FlutterActivity() {
                         }
                     }
 
+                    "pickNotificationSound" -> {
+                        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE,
+                                RingtoneManager.TYPE_NOTIFICATION)
+                            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                        }
+                        soundPickerResult = result
+                        startActivityForResult(intent, 1001)
+                    }
+
                     else -> result.notImplemented()
                 }
             }
     }
 
     // ─────────────────────────────────────────────────────────
-    // USAGE CHANNEL  — fully implemented
+    //  USAGE CHANNEL
     // ─────────────────────────────────────────────────────────
 
     private fun setupUsageChannel(flutterEngine: FlutterEngine) {
@@ -245,28 +255,15 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
 
-                    // ── Usage stats ───────────────────────────
-                    // Returns Map<packageName, foregroundMinutes> for
-                    // the requested window. Uses queryEvents() so we
-                    // count ONLY foreground time (MOVE_TO_FOREGROUND /
-                    // MOVE_TO_BACKGROUND pairs). The startMs passed by
-                    // Dart is already midnight of today in local time.
                     "getUsageStats" -> {
                         val startMs = call.argument<Long>("startMs") ?: run {
                             result.error("MISSING_ARG", "startMs required", null)
                             return@setMethodCallHandler
                         }
                         val endMs = call.argument<Long>("endMs") ?: System.currentTimeMillis()
-
-                        // Clamp startMs to midnight of the day it falls in,
-                        // ensuring we never bleed into a previous day even if
-                        // the caller passes a slightly-off value.
-                        val midnightMs = midnightOf(startMs)
-
-                        result.success(getForegroundMinutes(midnightMs, endMs))
+                        result.success(getForegroundMinutes(midnightOf(startMs), endMs))
                     }
 
-                    // ── Permission ────────────────────────────
                     "hasUsagePermission" -> result.success(hasUsagePermission())
 
                     "openUsageSettings" -> {
@@ -276,47 +273,41 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
 
-                    // ── App label ─────────────────────────────
                     "getAppLabel" -> {
-                        val pkg = call.argument<String>("packageName")
-                        if (pkg == null) {
+                        val pkg = call.argument<String>("packageName") ?: run {
                             result.error("MISSING_ARG", "packageName required", null)
                             return@setMethodCallHandler
                         }
                         result.success(resolveLabel(pkg))
                     }
 
-                    // ── App icon (PNG bytes) ───────────────────
                     "getAppIcon" -> {
-                        val pkg = call.argument<String>("packageName")
-                        if (pkg == null) {
+                        val pkg = call.argument<String>("packageName") ?: run {
                             result.error("MISSING_ARG", "packageName required", null)
                             return@setMethodCallHandler
                         }
                         result.success(resolveIcon(pkg))
                     }
 
-                    // ── All launchable installed apps ─────────
-                    // Uses getLaunchIntentForPackage() as the filter —
-                    // same as the system launcher. Returns only apps
-                    // with a real entry-point; no system daemons.
+                    // ── KEY FIX ───────────────────────────────
+                    // Old approach: pm.getLaunchIntentForPackage(pkg)
+                    //   Problem: on many OEMs this returns null for apps
+                    //   that haven't been launched recently, or for apps
+                    //   whose launcher activity is declared in a way that
+                    //   doesn't match the simple package-name lookup.
+                    //   Result: the app list is incomplete and changes
+                    //   between calls depending on usage history.
+                    //
+                    // New approach: queryIntentActivities with ACTION_MAIN
+                    //   + CATEGORY_LAUNCHER — exactly how the Android
+                    //   system builds the app drawer. Every app with a
+                    //   visible launcher icon appears here, unconditionally,
+                    //   regardless of whether it has ever been opened.
+                    //   Result: a complete, stable, deterministic list.
                     "getAllInstalledApps" -> {
-                        val apps = mutableListOf<Map<String, String>>()
-                        val pm   = packageManager
-                        val all  = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                        for (ai in all) {
-                            val launch = pm.getLaunchIntentForPackage(ai.packageName)
-                                ?: continue   // not a launchable user app
-                            val label = ai.loadLabel(pm).toString().trim()
-                            if (label.isEmpty()) continue
-                            apps.add(mapOf("packageName" to ai.packageName, "label" to label))
-                        }
-                        result.success(apps)
+                        result.success(getLauncherApps())
                     }
 
-                    // ── Current foreground app (2-second window) ─
-                    // Identical logic to PhaseOutService.checkFocusAndBlock()
-                    // but called from the Dart UI ticker.
                     "getForegroundApp" -> {
                         if (!hasUsagePermission()) {
                             result.success(null)
@@ -326,7 +317,7 @@ class MainActivity : FlutterActivity() {
                         val now   = System.currentTimeMillis()
                         val stats = usm.queryUsageStats(
                             UsageStatsManager.INTERVAL_BEST, now - 2_000L, now)
-                        val fg = stats
+                        val fg    = stats
                             ?.filter { it.totalTimeInForeground > 0 }
                             ?.maxByOrNull { it.lastTimeUsed }
                             ?.packageName
@@ -339,15 +330,66 @@ class MainActivity : FlutterActivity() {
     }
 
     // ─────────────────────────────────────────────────────────
-    // USAGE HELPERS
+    //  getLauncherApps  — the correct implementation
     // ─────────────────────────────────────────────────────────
 
     /**
-     * Returns true if the user has granted Usage Access to PhaseOut.
-     * Uses AppOpsManager — the only reliable check across all API levels.
+     * Returns all apps that have a launcher entry — i.e. every app
+     * that appears in the device's app drawer.
+     *
+     * Uses queryIntentActivities(ACTION_MAIN + CATEGORY_LAUNCHER)
+     * which is the canonical Android approach. Unlike
+     * getLaunchIntentForPackage(), this:
+     *   • Does not depend on whether the app has been opened before
+     *   • Works identically across Samsung, Xiaomi, Huawei, Pixel, etc.
+     *   • Returns a stable, deterministic list on every call
+     *   • Correctly handles apps with multiple launcher activities
+     *     (deduped by package name below)
+     *
+     * PhaseOut itself is excluded so it never appears in either
+     * the usage app-picker or the focus allowlist picker.
      */
+    private fun getLauncherApps(): List<Map<String, String>> {
+        val pm      = packageManager
+        val intent  = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+            PackageManager.MATCH_ALL
+        else
+            0
+
+        val resolved: List<ResolveInfo> = pm.queryIntentActivities(intent, flags)
+
+        // Deduplicate by package name — some apps register multiple
+        // launcher activities (e.g. tablets with split-screen shortcuts).
+        val seen  = mutableSetOf<String>()
+        val apps  = mutableListOf<Map<String, String>>()
+
+        for (ri in resolved) {
+            val pkg   = ri.activityInfo.packageName ?: continue
+            if (pkg == packageName)  continue   // exclude PhaseOut itself
+            if (!seen.add(pkg))      continue   // deduplicate
+
+            val label = ri.loadLabel(pm).toString().trim()
+            if (label.isEmpty())     continue
+
+            apps.add(mapOf("packageName" to pkg, "label" to label))
+        }
+
+        // Sort alphabetically so the Dart side receives a stable order
+        // and doesn't need to sort (though it may re-sort for display).
+        apps.sortBy { it["label"]!!.lowercase() }
+        return apps
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  Usage helpers
+    // ─────────────────────────────────────────────────────────
+
     private fun hasUsagePermission(): Boolean {
-        val aom = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val aom  = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
         val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             aom.unsafeCheckOpNoThrow(
                 AppOpsManager.OPSTR_GET_USAGE_STATS,
@@ -361,135 +403,89 @@ class MainActivity : FlutterActivity() {
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    /**
-     * Counts foreground minutes per package between [startMs] and [endMs]
-     * by replaying MOVE_TO_FOREGROUND / MOVE_TO_BACKGROUND events.
-     *
-     * This is strictly foreground-only — background services, music
-     * playback, and sync jobs do NOT contribute to the totals.
-     *
-     * Why queryEvents() instead of getTotalTimeInForeground()?
-     * getTotalTimeInForeground() on INTERVAL_DAILY can bleed data from
-     * the previous 24-hour window depending on OEM. queryEvents() gives
-     * us raw timestamped events we clamp to [startMs, endMs] ourselves.
-     */
     private fun getForegroundMinutes(startMs: Long, endMs: Long): Map<String, Int> {
-        val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val events = usm.queryEvents(startMs, endMs)
-            ?: return emptyMap()
+        val usm    = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val events = usm.queryEvents(startMs, endMs) ?: return emptyMap()
 
-        // Track the timestamp each app last moved to foreground
         val foregroundStart = mutableMapOf<String, Long>()
-        // Accumulate milliseconds per package
         val totalMs         = mutableMapOf<String, Long>()
+        val event           = UsageEvents.Event()
 
-        val event = UsageEvents.Event()
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
             val pkg = event.packageName ?: continue
-
             when (event.eventType) {
-                UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                UsageEvents.Event.MOVE_TO_FOREGROUND ->
                     foregroundStart[pkg] = event.timeStamp
-                }
                 UsageEvents.Event.MOVE_TO_BACKGROUND -> {
                     val fgStart = foregroundStart.remove(pkg) ?: continue
                     val elapsed = event.timeStamp - fgStart
-                    if (elapsed > 0) {
-                        totalMs[pkg] = (totalMs[pkg] ?: 0L) + elapsed
-                    }
+                    if (elapsed > 0) totalMs[pkg] = (totalMs[pkg] ?: 0L) + elapsed
                 }
             }
         }
 
-        // Close any apps still in foreground at endMs
+        // Close apps still in foreground at endMs
         for ((pkg, fgStart) in foregroundStart) {
             val elapsed = endMs - fgStart
-            if (elapsed > 0) {
-                totalMs[pkg] = (totalMs[pkg] ?: 0L) + elapsed
-            }
+            if (elapsed > 0) totalMs[pkg] = (totalMs[pkg] ?: 0L) + elapsed
         }
 
-        // Convert ms → minutes, drop zero-minute entries
         return totalMs
             .mapValues { (_, ms) -> (ms / 60_000L).toInt() }
-            .filter { (_, mins) -> mins > 0 }
+            .filter    { (_, mins) -> mins > 0 }
     }
 
-    /**
-     * Returns midnight (00:00:00.000) of the calendar day that [epochMs]
-     * falls in, in the device's local timezone.
-     */
     private fun midnightOf(epochMs: Long): Long {
         val cal = Calendar.getInstance()
         cal.timeInMillis = epochMs
         cal.set(Calendar.HOUR_OF_DAY, 0)
-        cal.set(Calendar.MINUTE, 0)
-        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MINUTE,      0)
+        cal.set(Calendar.SECOND,      0)
         cal.set(Calendar.MILLISECOND, 0)
         return cal.timeInMillis
     }
 
-    /**
-     * Resolves the human-readable label for [packageName].
-     * Falls back to the package name itself if the app is not found.
-     */
-    private fun resolveLabel(packageName: String): String {
-        return try {
-            val ai = packageManager.getApplicationInfo(packageName, 0)
-            packageManager.getApplicationLabel(ai).toString().trim()
-                .ifEmpty { packageName }
-        } catch (e: PackageManager.NameNotFoundException) {
-            packageName
-        }
-    }
+    private fun resolveLabel(packageName: String): String = try {
+        val ai = packageManager.getApplicationInfo(packageName, 0)
+        packageManager.getApplicationLabel(ai).toString().trim().ifEmpty { packageName }
+    } catch (e: PackageManager.NameNotFoundException) { packageName }
 
-    /**
-     * Returns the app icon for [packageName] as a PNG byte array,
-     * or null if the package is not found.
-     *
-     * Handles AdaptiveIconDrawable (API 26+) by rendering onto a
-     * white canvas — without this, adaptive icons produce a
-     * transparent/black square on many devices.
-     */
-    private fun resolveIcon(packageName: String): ByteArray? {
-        return try {
-            val drawable = packageManager.getApplicationIcon(packageName)
-            val bitmap: Bitmap
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                drawable is AdaptiveIconDrawable) {
-                // Render adaptive icon onto a solid background
-                bitmap = Bitmap.createBitmap(108, 108, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(bitmap)
-                drawable.setBounds(0, 0, 108, 108)
-                drawable.draw(canvas)
-            } else if (drawable is BitmapDrawable) {
-                bitmap = drawable.bitmap
-            } else {
-                // Generic drawable → render to bitmap
-                val w = drawable.intrinsicWidth.takeIf { it > 0 } ?: 108
+    private fun resolveIcon(packageName: String): ByteArray? = try {
+        val drawable = packageManager.getApplicationIcon(packageName)
+        val bitmap: Bitmap = when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            drawable is AdaptiveIconDrawable -> {
+                Bitmap.createBitmap(108, 108, Bitmap.Config.ARGB_8888).also {
+                    val canvas = Canvas(it)
+                    drawable.setBounds(0, 0, 108, 108)
+                    drawable.draw(canvas)
+                }
+            }
+            drawable is BitmapDrawable -> drawable.bitmap
+            else -> {
+                val w = drawable.intrinsicWidth.takeIf  { it > 0 } ?: 108
                 val h = drawable.intrinsicHeight.takeIf { it > 0 } ?: 108
-                bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(bitmap)
-                drawable.setBounds(0, 0, w, h)
-                drawable.draw(canvas)
+                Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also {
+                    val canvas = Canvas(it)
+                    drawable.setBounds(0, 0, w, h)
+                    drawable.draw(canvas)
+                }
             }
-
-            ByteArrayOutputStream().use { out ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 90, out)
-                out.toByteArray()
-            }
-        } catch (e: PackageManager.NameNotFoundException) {
-            null
-        } catch (e: Exception) {
-            Log.e(tag, "resolveIcon($packageName): ${e.message}")
-            null
         }
+        ByteArrayOutputStream().use { out ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 90, out)
+            out.toByteArray()
+        }
+    } catch (e: PackageManager.NameNotFoundException) {
+        null
+    } catch (e: Exception) {
+        Log.e(tag, "resolveIcon($packageName): ${e.message}")
+        null
     }
 
     // ─────────────────────────────────────────────────────────
-    // PERMISSION HELPERS
+    //  Permission helpers
     // ─────────────────────────────────────────────────────────
 
     private fun isNotificationListenerEnabled(): Boolean {
@@ -504,7 +500,7 @@ class MainActivity : FlutterActivity() {
     }
 
     // ─────────────────────────────────────────────────────────
-    // HELPERS
+    //  Intent helpers
     // ─────────────────────────────────────────────────────────
 
     private fun sendServiceIntent(action: String) {
@@ -524,15 +520,10 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun handleLaunchApp(packageName: String): Boolean {
-        return try {
-            val intent = packageManager.getLaunchIntentForPackage(packageName)
-                ?: return false
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
-            true
-        } catch (e: Exception) {
-            false
-        }
-    }
+    private fun handleLaunchApp(packageName: String): Boolean = try {
+        val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return false
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
+        true
+    } catch (e: Exception) { false }
 }

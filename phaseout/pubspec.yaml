@@ -52,6 +52,9 @@ dependencies:
   firebase_auth: ^5.2.1
   
   url_launcher: any
+  cloud_firestore: any
+  package_info_plus: any
+  device_apps: any
 dev_dependencies:
   flutter_test:
     sdk: flutter

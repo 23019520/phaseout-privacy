@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-//  lib/db/migrations.dart  (UPGRADED — v5)
+//  lib/db/migrations.dart  (UPGRADED — v6)
 //  PhaseOut — sqflite schema migrations
 //
 //  v1 — schedules, usage_events
@@ -8,6 +8,7 @@
 //  v4 — wake_hour, wake_minute on schedules (morning alarm)
 //  v5 — battery_snapshots.screen_on_seconds (ML signal)
 //       day_profiles (per-weekday ML model storage)
+//  v6 — focus_sessions.allowlist → blockedApps (blacklist refactor)
 // ─────────────────────────────────────────────────────────────
 
 import 'package:sqflite/sqflite.dart';
@@ -35,7 +36,6 @@ class DatabaseMigrations {
   }
 
   // ── v4 — morning alarm columns on schedules ─────────────────
-  // Uses try/catch on each ALTER so it is safe to re-run.
   static Future<void> migrateV3ToV4(Database db) async {
     try {
       await db.execute(
@@ -51,29 +51,57 @@ class DatabaseMigrations {
     } catch (_) {}
   }
 
-  // ── v5 — ML signal + day profiles ──────────────────────────
-  // safe to re-run: each ALTER TABLE is wrapped in try/catch,
-  // and CREATE TABLE uses IF NOT EXISTS.
+  // ── v5 — ML signal + day profiles ───────────────────────────
   static Future<void> migrateV4ToV5(Database db) async {
-    // Add screen_on_seconds to battery_snapshots
-    // (nullable INTEGER — null for rows written before v5)
     try {
       await db.execute(
         'ALTER TABLE ${AppConstants.tableBattery} '
         'ADD COLUMN screen_on_seconds INTEGER',
       );
     } catch (_) {}
-
-    // Create day_profiles table
     await _createDayProfiles(db);
+  }
+
+  // ── v6 — rename focus_sessions.allowlist → blockedApps ──────
+  //
+  // Uses table-swap instead of ALTER TABLE RENAME COLUMN because
+  // Android devices below API 29 ship with SQLite < 3.25.0 which
+  // does not support RENAME COLUMN.
+  static Future<void> migrateV5ToV6(Database db) async {
+    // 1. New table with correct column name.
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS focus_sessions_new (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        start_time       TEXT    NOT NULL,
+        end_time         TEXT,
+        blockedApps      TEXT    NOT NULL DEFAULT '[]',
+        blocked_attempts INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    // 2. Copy existing rows, mapping allowlist → blockedApps.
+    try {
+      await db.execute('''
+        INSERT INTO focus_sessions_new
+          (id, start_time, end_time, blockedApps, blocked_attempts)
+        SELECT
+          id, start_time, end_time, allowlist, blocked_attempts
+        FROM focus_sessions
+      ''');
+    } catch (_) {
+      // focus_sessions didn't exist yet on this install — nothing to copy.
+    }
+
+    // 3. Swap tables.
+    await db.execute('DROP TABLE IF EXISTS focus_sessions');
+    await db.execute(
+        'ALTER TABLE focus_sessions_new RENAME TO focus_sessions');
   }
 
   // ─────────────────────────────────────────────────────────
   //  TABLE DEFINITIONS
   // ─────────────────────────────────────────────────────────
 
-  // Schedules — wake columns baked in from the start so fresh
-  // installs at any version don't need an extra migration.
   static Future<void> _createSchedules(Database db) async {
     await db.execute('''
       CREATE TABLE ${AppConstants.tableSchedules} (
@@ -117,20 +145,19 @@ class DatabaseMigrations {
     ''');
   }
 
+  // Fresh installs at v6+ get blockedApps from the start.
   static Future<void> _createFocusSessions(Database db) async {
     await db.execute('''
       CREATE TABLE ${AppConstants.tableFocusSessions} (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        start_time        TEXT    NOT NULL,
-        end_time          TEXT,
-        allowlist         TEXT    NOT NULL,
-        blocked_attempts  INTEGER NOT NULL DEFAULT 0
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        start_time       TEXT    NOT NULL,
+        end_time         TEXT,
+        blockedApps      TEXT    NOT NULL DEFAULT '[]',
+        blocked_attempts INTEGER NOT NULL DEFAULT 0
       )
     ''');
   }
 
-  // battery_snapshots — screen_on_seconds included from the start
-  // for fresh installs at v5. Existing rows will have NULL there.
   static Future<void> _createBatterySnapshots(Database db) async {
     await db.execute('''
       CREATE TABLE ${AppConstants.tableBattery} (
@@ -144,8 +171,6 @@ class DatabaseMigrations {
     ''');
   }
 
-  // day_profiles — one row per weekday (1–7).
-  // Upserted by DayProfileEngine.rebuildProfiles().
   static Future<void> _createDayProfiles(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS ${AppConstants.tableDayProfiles} (

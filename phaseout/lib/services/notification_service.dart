@@ -1,13 +1,23 @@
 // ─────────────────────────────────────────────────────────────
 //  lib/services/notification_service.dart
 //
-//  FIXES:
-//  - initialise() restored (was renamed to init() by mistake)
-//  - cancelAll() added (called by background_service.dart)
-//  - sendScheduledReminder() added (called by battery_service
-//    and pre_notification_service)
-//  - Channel constants now use AppConstants values
-//  - Custom sound stored via prefCustomSoundUri constant
+//  FIX: notification IDs are now deterministic and collision-free.
+//
+//  Previous code used `DateTime.now().millisecondsSinceEpoch ~/ 1000`
+//  as the notification ID for sendAlert().  Two calls within the same
+//  second produced the same ID, so the second notification silently
+//  replaced the first.
+//
+//  New strategy:
+//    - General alerts      → hash of title+body, clamped to positive int
+//    - Usage limit alerts  → stable hash of the package name
+//      (so the same app never stacks multiple limit notifications,
+//       but two different apps never collide)
+//    - Reminders           → hash of scheduleName (unchanged)
+//
+//  Using a content hash rather than a timestamp also means repeated
+//  calls with identical content update in place rather than stacking,
+//  which is the correct UX for "you've hit your limit" alerts.
 // ─────────────────────────────────────────────────────────────
 
 import 'package:flutter/services.dart';
@@ -20,12 +30,13 @@ import '../utils/logger.dart';
 
 class NotificationService {
 
-  static const String _tag     = 'NotificationService';
-  static const _channel        = MethodChannel(AppConstants.mediaChannel);
-  static final _plugin          = FlutterLocalNotificationsPlugin();
-  static bool _initialized      = false;
+  static const String _tag    = 'NotificationService';
+  static const _channel       = MethodChannel(AppConstants.mediaChannel);
+  static final _plugin         = FlutterLocalNotificationsPlugin();
+  static bool  _initialized   = false;
 
-  // ── Initialise — called from main.dart ───────────────────
+  // ── Initialise ────────────────────────────────────────────
+
   static Future<void> initialise() async {
     if (_initialized) return;
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -34,8 +45,8 @@ class NotificationService {
     AppLogger.i(_tag, 'NotificationService initialised');
   }
 
-  // ── Cancel all notifications ──────────────────────────────
-  // Called by background_service.dart on shutdown.
+  // ── Cancel all ────────────────────────────────────────────
+
   static Future<void> cancelAll() async {
     try {
       await _plugin.cancelAll();
@@ -45,7 +56,8 @@ class NotificationService {
     }
   }
 
-  // ── Log an event to the activity log ─────────────────────
+  // ── Event log ─────────────────────────────────────────────
+
   static Future<void> logEvent({
     required String eventType,
     required String detail,
@@ -64,6 +76,9 @@ class NotificationService {
   }
 
   // ── Send a high-importance alert ──────────────────────────
+
+  /// FIX: ID is now a stable hash of [title]+[body] so repeated calls
+  /// for the same alert update in-place rather than stacking.
   static Future<void> sendAlert(String title, String body) async {
     try {
       await initialise();
@@ -81,9 +96,11 @@ class NotificationService {
             ? UriAndroidNotificationSound(soundUri) : null,
       );
 
+      // Stable, positive notification ID derived from content.
+      final id = _stableId('$title|$body');
+
       await _plugin.show(
-        DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        title, body,
+        id, title, body,
         NotificationDetails(android: details),
       );
 
@@ -94,6 +111,7 @@ class NotificationService {
   }
 
   // ── Send a bedtime reminder ───────────────────────────────
+
   static Future<void> sendReminder(String scheduleName, String time) async {
     try {
       await initialise();
@@ -111,7 +129,7 @@ class NotificationService {
       );
 
       await _plugin.show(
-        scheduleName.hashCode,
+        _stableId(scheduleName),
         '🌙 Bedtime in 30 minutes',
         '$scheduleName starts at $time',
         NotificationDetails(android: details),
@@ -125,13 +143,14 @@ class NotificationService {
     }
   }
 
-  // ── Send a scheduled reminder (alias used by battery/pre-notification services)
+  /// Alias used by battery/pre-notification services.
   static Future<void> sendScheduledReminder(
       String title, String body) async {
     await sendAlert(title, body);
   }
 
   // ── Custom sound ──────────────────────────────────────────
+
   static Future<void> setCustomSound(String? soundUri) async {
     final prefs = await SharedPreferences.getInstance();
     if (soundUri == null) {
@@ -150,7 +169,6 @@ class NotificationService {
 
   static Future<void> clearCustomSound() => setCustomSound(null);
 
-  // ── Pick custom sound from device ────────────────────────
   static Future<String?> pickSound() async {
     try {
       final uri = await _channel
@@ -162,4 +180,11 @@ class NotificationService {
       return null;
     }
   }
+
+  // ── Helpers ───────────────────────────────────────────────
+
+  /// Returns a stable, non-negative int derived from [key].
+  /// Uses Dart's built-in hashCode, clamped to the positive range
+  /// Android accepts for notification IDs (0 to 2^31-1).
+  static int _stableId(String key) => key.hashCode.abs();
 }

@@ -1,14 +1,12 @@
 // ─────────────────────────────────────────────────────────────
 //  lib/screens/focus_lock_overlay.dart
-//  PhaseOut — Focus mode lock overlay
+//  PhaseOut — Focus mode lock overlay (v2)
 //
-//  Shown as a system overlay when a blocked app is detected.
-//  Simple, non-distracting design — moon character, message,
-//  and a single button to return to allowed apps.
-//
-//  NOTE: Requires SYSTEM_ALERT_WINDOW permission.
-//  For MVP this is shown as a full-screen route pushed over
-//  the blocked app. True system overlay is v1.1 (Kotlin).
+//  Changes from v1:
+//    - "End focus session" is now a plain underlined Text inside
+//      a GestureDetector — no TextButton chrome, smaller presence,
+//      visually subordinate to the "Go back" button.
+//    - allowlist param removed (unused in blacklist model).
 // ─────────────────────────────────────────────────────────────
 
 import 'dart:math' as math;
@@ -18,12 +16,10 @@ import '../services/focus_service.dart';
 
 class FocusLockOverlay extends StatefulWidget {
   final String blockedPackage;
-  final List<String> allowlist;
 
   const FocusLockOverlay({
     super.key,
     required this.blockedPackage,
-    required this.allowlist,
   });
 
   @override
@@ -76,7 +72,8 @@ class _FocusLockOverlayState extends State<FocusLockOverlay>
   String get _appName {
     final parts = widget.blockedPackage.split('.');
     final raw   = parts.last;
-    return raw.isEmpty ? widget.blockedPackage
+    return raw.isEmpty
+        ? widget.blockedPackage
         : raw[0].toUpperCase() + raw.substring(1);
   }
 
@@ -91,7 +88,7 @@ class _FocusLockOverlayState extends State<FocusLockOverlay>
       backgroundColor: Colors.transparent,
       body: Stack(children: [
 
-        // ── Blurred dark background ──────────────────────
+        // ── Background ───────────────────────────────────
         Positioned.fill(
           child: CustomPaint(painter: _OverlayBgPainter()),
         ),
@@ -109,7 +106,7 @@ class _FocusLockOverlayState extends State<FocusLockOverlay>
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
 
-                      // Moon character — animated pulse
+                      // Moon — animated pulse
                       AnimatedBuilder(
                         animation: _pulse,
                         builder: (_, __) => Transform.scale(
@@ -120,7 +117,7 @@ class _FocusLockOverlayState extends State<FocusLockOverlay>
 
                       const SizedBox(height: 32),
 
-                      // Blocked message
+                      // Blocked badge
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 6),
@@ -136,7 +133,8 @@ class _FocusLockOverlayState extends State<FocusLockOverlay>
                             fontSize: 12,
                             color: AppTheme.danger,
                             fontWeight: FontWeight.w600,
-                          )),
+                          ),
+                        ),
                       ),
 
                       const SizedBox(height: 16),
@@ -145,29 +143,29 @@ class _FocusLockOverlayState extends State<FocusLockOverlay>
                         'Stay focused.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          fontFamily:  'DMSerifDisplay',
-                          fontSize:    32,
-                          color:       Colors.white,
+                          fontFamily:    'DMSerifDisplay',
+                          fontSize:      32,
+                          color:         Colors.white,
                           letterSpacing: 0.5,
-                          height: 1.1,
+                          height:        1.1,
                         ),
                       ),
 
                       const SizedBox(height: 12),
 
                       Text(
-                        'You\'re in a focus session.\nThis app is not in your allowed list.',
+                        'You\'re in a focus session.\nThis app is on your blocked list.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.white.withValues(alpha: 0.55),
-                          height: 1.5,
+                          color:    Colors.white.withValues(alpha: 0.55),
+                          height:   1.5,
                         ),
                       ),
 
                       const SizedBox(height: 40),
 
-                      // Go back button
+                      // Go back — primary action
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
@@ -184,24 +182,29 @@ class _FocusLockOverlayState extends State<FocusLockOverlay>
                             padding:
                                 const EdgeInsets.symmetric(vertical: 15),
                           ),
-                          child: const Text('Go back',
+                          child: const Text(
+                            'Go back',
                             style: TextStyle(
-                              fontSize: 15,
+                              fontSize:   15,
                               fontWeight: FontWeight.w600,
-                            )),
+                            ),
+                          ),
                         ),
                       ),
 
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 20),
 
-                      // End session link
-                      TextButton(
-                        onPressed: _endSession,
+                      // End session — subtle underlined link
+                      GestureDetector(
+                        onTap: _endSession,
                         child: Text(
                           'End focus session',
                           style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.white.withValues(alpha: 0.3),
+                            fontSize:      13,
+                            color:         Colors.white.withValues(alpha: 0.35),
+                            decoration:    TextDecoration.underline,
+                            decorationColor:
+                                Colors.white.withValues(alpha: 0.25),
                           ),
                         ),
                       ),
@@ -217,7 +220,8 @@ class _FocusLockOverlayState extends State<FocusLockOverlay>
   }
 }
 
-// ── Moon character painter ────────────────────────────────────
+// ── Moon character ────────────────────────────────────────────
+
 class _MoonCharacter extends StatelessWidget {
   final double size;
   const _MoonCharacter({required this.size});
@@ -225,9 +229,9 @@ class _MoonCharacter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: size,
+      width:  size,
       height: size,
-      child: CustomPaint(painter: _MoonCharacterPainter()),
+      child:  CustomPaint(painter: _MoonCharacterPainter()),
     );
   }
 }
@@ -244,7 +248,7 @@ class _MoonCharacterPainter extends CustomPainter {
     canvas.drawCircle(
       Offset(cx, cy), w * 0.48,
       Paint()
-        ..color = const Color(0xFF60A5FA).withValues(alpha: 0.12)
+        ..color      = const Color(0xFF60A5FA).withValues(alpha: 0.12)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 20),
     );
 
@@ -260,36 +264,29 @@ class _MoonCharacterPainter extends CustomPainter {
       Paint()..color = const Color(0xFF060F1E),
     );
 
-    // Eyes — simple dots
+    // Eyes
     final eyePaint = Paint()..color = const Color(0xFF0A1628);
-
-    // Left eye
-    canvas.drawCircle(Offset(cx - w * 0.08, cy - h * 0.04), w * 0.03, eyePaint);
-    // Right eye — barely visible on crescent edge
+    canvas.drawCircle(Offset(cx - w * 0.08, cy - h * 0.04), w * 0.030, eyePaint);
     canvas.drawCircle(Offset(cx + w * 0.01, cy - h * 0.06), w * 0.025, eyePaint);
 
-    // Smile — small arc
-    final smileyRect = Rect.fromCenter(
-      center: Offset(cx - w * 0.04, cy + h * 0.06),
-      width:  w * 0.15,
-      height: h * 0.08,
-    );
+    // Smile
     canvas.drawArc(
-      smileyRect,
-      0,
-      math.pi,
-      false,
+      Rect.fromCenter(
+        center: Offset(cx - w * 0.04, cy + h * 0.06),
+        width:  w * 0.15,
+        height: h * 0.08,
+      ),
+      0, math.pi, false,
       Paint()
-        ..color = const Color(0xFF0A1628)
-        ..style = PaintingStyle.stroke
+        ..color       = const Color(0xFF0A1628)
+        ..style       = PaintingStyle.stroke
         ..strokeWidth = w * 0.025
-        ..strokeCap = StrokeCap.round,
+        ..strokeCap   = StrokeCap.round,
     );
 
-    // Three phase stars/dots around the moon
+    // Stars
     final starPaint = Paint()
       ..color = const Color(0xFF60A5FA).withValues(alpha: 0.7);
-
     canvas.drawCircle(Offset(cx + w * 0.42, cy - h * 0.30), w * 0.025, starPaint);
     canvas.drawCircle(Offset(cx - w * 0.38, cy - h * 0.20), w * 0.018, starPaint);
     canvas.drawCircle(Offset(cx + w * 0.38, cy + h * 0.25), w * 0.015, starPaint);
@@ -300,17 +297,14 @@ class _MoonCharacterPainter extends CustomPainter {
 }
 
 // ── Background painter ────────────────────────────────────────
+
 class _OverlayBgPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    // Deep translucent navy — semi-transparent so user sees they
-    // are blocked but can't interact with the app behind
     canvas.drawRect(
       Rect.fromLTWH(0, 0, size.width, size.height),
       Paint()..color = const Color(0xF0040D1A),
     );
-
-    // Subtle radial vignette to focus the eye on center
     canvas.drawRect(
       Rect.fromLTWH(0, 0, size.width, size.height),
       Paint()

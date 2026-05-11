@@ -31,7 +31,7 @@ class AppConstants {
 
   // ── Database ───────────────────────────────────────────────
   static const String dbName    = 'phaseout.db';
-  static const int    dbVersion = 5;
+  static const int    dbVersion = 6;
 
   // ── Table names ────────────────────────────────────────────
   static const String tableSchedules     = 'schedules';

@@ -3,12 +3,16 @@ plugins {
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 dependencies {
-    implementation(platform("com.google.firebase:firebase-bom:34.10.0"))
+    // Firebase BOM — pins all firebase library versions together
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
 
-    // ADD THIS
+    implementation("com.google.firebase:firebase-analytics-ktx")
+    implementation("com.google.firebase:firebase-crashlytics-ktx")
+
     implementation("androidx.activity:activity-ktx:1.8.2")
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
@@ -17,7 +21,6 @@ dependencies {
 android {
     namespace = "com.brightdev.phaseout"
 
-    // Better to set directly
     compileSdk = 36
 
     ndkVersion = "28.2.13676358"
@@ -35,7 +38,7 @@ android {
     defaultConfig {
         applicationId = "com.brightdev.phaseout"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

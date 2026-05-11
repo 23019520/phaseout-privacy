@@ -1,15 +1,14 @@
-// ─────────────────────────────────────────────────────────────
-//  lib/screens/splash_screen.dart  — PhaseOut v1.0 final
-//  Splash animation → Onboarding (first time) or Dashboard.
-//  Animation is untouched and perfect.
-// ─────────────────────────────────────────────────────────────
+// lib/screens/splash_screen.dart
+// PhaseOut — Splash screen with version check on startup
 
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_theme.dart';
+import '../services/version_service.dart';
 import '../utils/constants.dart';
+import '../widgets/update_dialog.dart';
 import 'dashboard_screen.dart';
 import 'onboarding_screen.dart';
 
@@ -72,20 +71,39 @@ class _SplashScreenState extends State<SplashScreen>
     _tagCtrl.forward();
     await Future.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;
-    _navigate();
+    await _navigate();
   }
 
   Future<void> _navigate() async {
-    final prefs     = await SharedPreferences.getInstance();
-    final onboarded = prefs.getBool(AppConstants.prefOnboardingDone) ?? false;
+    // Run version check and onboarding check in parallel
+    final results = await Future.wait([
+      VersionService.check(),
+      SharedPreferences.getInstance(),
+    ]);
+
     if (!mounted) return;
+
+    final versionResult = results[0] as VersionCheckResult;
+    final prefs         = results[1] as SharedPreferences;
+    final onboarded     = prefs.getBool(AppConstants.prefOnboardingDone) ?? false;
+
+    // Navigate first, then show update dialog on top
+    // This ensures the app is usable even before the dialog is dismissed
     Navigator.of(context).pushReplacement(PageRouteBuilder(
-      pageBuilder:        (_, __, ___) =>
+      pageBuilder: (_, __, ___) =>
           onboarded ? const DashboardScreen() : const OnboardingScreen(),
       transitionDuration: const Duration(milliseconds: 500),
-      transitionsBuilder: (_, anim, __, child) =>
+      transitionsBuilder:  (_, anim, __, child) =>
           FadeTransition(opacity: anim, child: child),
     ));
+
+    // Show update dialog after navigation if needed
+    if (versionResult.needsUpdate && mounted) {
+      // Small delay so the destination screen is fully rendered
+      await Future.delayed(const Duration(milliseconds: 600));
+      if (!mounted) return;
+      await UpdateDialog.showIfNeeded(context, versionResult);
+    }
   }
 
   @override
@@ -102,6 +120,7 @@ class _SplashScreenState extends State<SplashScreen>
     return Scaffold(
       backgroundColor: AppTheme.navy,
       body: Stack(children: [
+
         const Positioned.fill(child: _StarField()),
 
         AnimatedBuilder(
@@ -123,67 +142,74 @@ class _SplashScreenState extends State<SplashScreen>
         ),
 
         Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            AnimatedBuilder(
-              animation: _moonCtrl,
-              builder: (_, __) => Opacity(
-                opacity: _moonOpacity.value,
-                child: Transform.scale(
-                  scale: _moonScale.value,
-                  child: const _MoonIcon(size: 110),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+
+              AnimatedBuilder(
+                animation: _moonCtrl,
+                builder: (_, __) => Opacity(
+                  opacity: _moonOpacity.value,
+                  child: Transform.scale(
+                    scale: _moonScale.value,
+                    child: const _MoonIcon(size: 110),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 36),
+              const SizedBox(height: 36),
 
-            AnimatedBuilder(
-              animation: _wordCtrl,
-              builder: (_, __) => FadeTransition(
-                opacity: _wordOpacity,
-                child: SlideTransition(
-                  position: _wordSlide,
-                  child: const Text('PhaseOut',
+              AnimatedBuilder(
+                animation: _wordCtrl,
+                builder: (_, __) => FadeTransition(
+                  opacity: _wordOpacity,
+                  child: SlideTransition(
+                    position: _wordSlide,
+                    child: const Text('PhaseOut',
+                      style: TextStyle(
+                        fontFamily:    'DMSerifDisplay',
+                        fontSize:      38,
+                        color:         AppTheme.textPrimary,
+                        letterSpacing: 0.5,
+                      )),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              AnimatedBuilder(
+                animation: _tagCtrl,
+                builder: (_, __) => FadeTransition(
+                  opacity: _tagOpacity,
+                  child: const Text('Wind down. Sleep better.',
                     style: TextStyle(
-                      fontFamily:    'DMSerifDisplay',
-                      fontSize:      38,
-                      color:         AppTheme.textPrimary,
-                      letterSpacing: 0.5,
+                      fontSize:   14,
+                      color:      AppTheme.textSecond,
+                      letterSpacing: 0.3,
+                      fontWeight: FontWeight.w300,
                     )),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
 
-            AnimatedBuilder(
-              animation: _tagCtrl,
-              builder: (_, __) => FadeTransition(
-                opacity: _tagOpacity,
-                child: const Text('Wind down. Sleep better.',
-                  style: TextStyle(
-                    fontSize:   14,
-                    color:      AppTheme.textSecond,
-                    letterSpacing: 0.3,
-                    fontWeight: FontWeight.w300,
-                  )),
+              const SizedBox(height: 56),
+
+              AnimatedBuilder(
+                animation: _tagCtrl,
+                builder: (_, __) => Opacity(
+                  opacity: _tagOpacity.value,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _dot(18, 5),
+                      const SizedBox(width: 8),
+                      _dot(5, 5),
+                      const SizedBox(width: 8),
+                      _dot(4, 4),
+                    ],
+                  ),
+                ),
               ),
-            ),
-
-            const SizedBox(height: 56),
-
-            AnimatedBuilder(
-              animation: _tagCtrl,
-              builder: (_, __) => Opacity(
-                opacity: _tagOpacity.value,
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  _dot(18, 5),
-                  const SizedBox(width: 8),
-                  _dot(5, 5),
-                  const SizedBox(width: 8),
-                  _dot(4, 4),
-                ]),
-              ),
-            ),
-          ]),
+            ],
+          ),
         ),
       ]),
     );
@@ -203,27 +229,24 @@ class _MoonIcon extends StatelessWidget {
   const _MoonIcon({required this.size});
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size, height: size,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(size * 0.24),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end:   Alignment.bottomRight,
-          colors: [Color(0xFF1E3560), Color(0xFF0A1830)],
-        ),
-        boxShadow: [
-          BoxShadow(color: AppTheme.blue.withValues(alpha: 0.3),
-              blurRadius: size * 0.5),
-          BoxShadow(color: AppTheme.blueLight.withValues(alpha: 0.1),
-              blurRadius: size * 0.2, spreadRadius: size * 0.05),
-        ],
-        border: Border.all(color: AppTheme.border2, width: 1),
+  Widget build(BuildContext context) => Container(
+    width: size, height: size,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(size * 0.24),
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft, end: Alignment.bottomRight,
+        colors: [Color(0xFF1E3560), Color(0xFF0A1830)],
       ),
-      child: CustomPaint(painter: _MoonPainter()),
-    );
-  }
+      boxShadow: [
+        BoxShadow(color: AppTheme.blue.withValues(alpha: 0.3),
+            blurRadius: size * 0.5),
+        BoxShadow(color: AppTheme.blueLight.withValues(alpha: 0.1),
+            blurRadius: size * 0.2, spreadRadius: size * 0.05),
+      ],
+      border: Border.all(color: AppTheme.border2, width: 1),
+    ),
+    child: CustomPaint(painter: _MoonPainter()),
+  );
 }
 
 class _MoonPainter extends CustomPainter {
@@ -234,11 +257,11 @@ class _MoonPainter extends CustomPainter {
         Paint()..color = const Color(0xFFE8F0FF).withValues(alpha: 0.95));
     canvas.drawCircle(Offset(w*0.56, h*0.42), w*0.21,
         Paint()..color = const Color(0xFF0D1628));
-    final s = Paint()..color = Colors.white.withValues(alpha: 0.85);
-    canvas.drawCircle(Offset(w*0.76, h*0.28), w*0.04, s);
+    final star = Paint()..color = Colors.white.withValues(alpha: 0.85);
+    canvas.drawCircle(Offset(w*0.76, h*0.28), w*0.04, star);
     canvas.drawCircle(Offset(w*0.76, h*0.28), w*0.018,
         Paint()..color = const Color(0xFF60A5FA));
-    canvas.drawCircle(Offset(w*0.68, h*0.70), w*0.025, s);
+    canvas.drawCircle(Offset(w*0.68, h*0.70), w*0.025, star);
     canvas.drawCircle(Offset(w*0.20, h*0.24), w*0.018,
         Paint()..color = Colors.white.withValues(alpha: 0.6));
   }
@@ -248,19 +271,23 @@ class _MoonPainter extends CustomPainter {
 class _StarField extends StatelessWidget {
   const _StarField();
   @override
-  Widget build(BuildContext context) => CustomPaint(painter: _StarPainter());
+  Widget build(BuildContext context) =>
+      CustomPaint(painter: _StarFieldPainter());
 }
 
-class _StarPainter extends CustomPainter {
+class _StarFieldPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final rng = math.Random(42);
-    final p   = Paint();
+    final rng   = math.Random(42);
+    final paint = Paint();
     for (var i = 0; i < 80; i++) {
-      p.color = Colors.white.withValues(alpha: rng.nextDouble() * 0.5 + 0.15);
+      paint.color = Colors.white.withValues(
+          alpha: rng.nextDouble() * 0.5 + 0.15);
       canvas.drawCircle(
-        Offset(rng.nextDouble() * size.width, rng.nextDouble() * size.height * 0.85),
-        rng.nextDouble() * 1.2 + 0.3, p,
+        Offset(rng.nextDouble() * size.width,
+               rng.nextDouble() * size.height * 0.85),
+        rng.nextDouble() * 1.2 + 0.3,
+        paint,
       );
     }
   }
