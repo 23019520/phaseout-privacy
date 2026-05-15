@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Privacy Policy — PhaseOut</title>
-  <meta name="description" content="PhaseOut privacy policy. No data collected, no account required, everything stays on your device.">
+  <title>PhaseOut — Privacy Policy</title>
+  <meta name="description" content="PhaseOut privacy policy. No data collection, no ads, no account required. Everything stays on your device.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400;1,500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -13,19 +13,20 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --white:    #FFFFFF;
-      --paper:    #F8F7F4;
-      --paper-2:  #F1EFE9;
-      --ink:      #0E0E0C;
-      --ink-60:   rgba(14,14,12,0.60);
-      --ink-35:   rgba(14,14,12,0.35);
-      --ink-12:   rgba(14,14,12,0.12);
-      --teal:     #0A7A6E;
-      --teal-lt:  #EBF5F3;
-      --teal-mid: #12A898;
-      --rule:     rgba(14,14,12,0.10);
-      --serif:    'Playfair Display', Georgia, serif;
-      --sans:     'Syne', system-ui, sans-serif;
+      --white:      #FFFFFF;
+      --paper:      #F8F7F4;
+      --paper-2:    #F1EFE9;
+      --ink:        #0E0E0C;
+      --ink-60:     rgba(14,14,12,0.60);
+      --ink-35:     rgba(14,14,12,0.35);
+      --ink-12:     rgba(14,14,12,0.12);
+      --ink-06:     rgba(14,14,12,0.06);
+      --accent:     #0A7A6E;
+      --accent-lt:  #EBF5F3;
+      --accent-mid: #12A898;
+      --rule:       rgba(14,14,12,0.10);
+      --serif:      'Playfair Display', Georgia, serif;
+      --sans:       'Syne', system-ui, sans-serif;
     }
 
     html { scroll-behavior: smooth; }
@@ -36,22 +37,24 @@
       font-family: var(--sans);
       font-size: 15px;
       line-height: 1.65;
+      overflow-x: hidden;
     }
 
-    /* ── Nav ── */
+    /* ══ NAV ══════════════════════════════════════════════ */
     nav {
-      position: sticky;
-      top: 0;
+      position: fixed;
+      top: 0; left: 0; right: 0;
       z-index: 200;
       height: 62px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 48px;
+      padding: 0 clamp(20px, 4vw, 48px);
       background: rgba(255,255,255,0.92);
       backdrop-filter: blur(18px);
       -webkit-backdrop-filter: blur(18px);
       border-bottom: 1px solid var(--rule);
+      transition: height 0.3s;
     }
 
     .nav-wordmark {
@@ -61,29 +64,59 @@
       color: var(--ink);
       text-decoration: none;
       letter-spacing: -0.3px;
+      flex-shrink: 0;
     }
 
-    .nav-back {
+    .nav-links {
+      display: flex;
+      gap: clamp(14px, 2.5vw, 36px);
+      list-style: none;
+      align-items: center;
+    }
+
+    .nav-links a {
       font-size: 13px;
       font-weight: 500;
       color: var(--ink-60);
       text-decoration: none;
-      letter-spacing: 0.2px;
+      letter-spacing: 0.3px;
       transition: color 0.2s;
+      white-space: nowrap;
     }
 
-    .nav-back:hover { color: var(--teal); }
+    .nav-links a:hover { color: var(--ink); }
 
-    /* ── Hero ── */
+    .nav-dl {
+      background: var(--ink) !important;
+      color: var(--white) !important;
+      padding: 8px 18px !important;
+      border-radius: 6px;
+      letter-spacing: 0.4px;
+      transition: background 0.2s, transform 0.15s !important;
+    }
+
+    .nav-dl:hover { background: var(--accent) !important; transform: translateY(-1px); }
+
+    @media (max-width: 520px) { .nav-hide-sm { display: none; } }
+
+    /* ══ PAGE WRAPPER ══════════════════════════════════════ */
+    .page-wrap { padding-top: 62px; }
+
+    /* ══ HERO ══════════════════════════════════════════════ */
     .pp-hero {
-      background: var(--paper);
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 72px clamp(20px, 4vw, 48px) 64px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 40px;
+      align-items: end;
       border-bottom: 1px solid var(--rule);
-      padding: 72px 48px 64px;
     }
 
-    .pp-hero-inner {
-      max-width: 720px;
-      margin: 0 auto;
+    @media (max-width: 640px) {
+      .pp-hero { grid-template-columns: 1fr; padding: 48px 20px 40px; }
+      .pp-hero-meta { display: none; }
     }
 
     .pp-eyebrow {
@@ -91,344 +124,804 @@
       font-weight: 600;
       letter-spacing: 1.8px;
       text-transform: uppercase;
-      color: var(--teal);
+      color: var(--accent);
       display: block;
-      margin-bottom: 18px;
+      margin-bottom: 16px;
+      opacity: 0;
+      animation: rise 0.6s 0.05s ease forwards;
     }
 
     .pp-h1 {
       font-family: var(--serif);
-      font-size: clamp(36px, 5vw, 56px);
+      font-size: clamp(36px, 5vw, 68px);
       font-weight: 400;
-      line-height: 1.06;
-      letter-spacing: -1.2px;
+      line-height: 1.05;
+      letter-spacing: -1.5px;
       color: var(--ink);
-      margin-bottom: 20px;
+      margin-bottom: 18px;
+      opacity: 0;
+      animation: rise 0.7s 0.15s ease forwards;
     }
 
-    .pp-h1 em { font-style: italic; color: var(--teal); }
+    .pp-h1 em { font-style: italic; color: var(--accent); }
 
-    .pp-meta {
-      font-size: 13px;
-      color: var(--ink-35);
-      display: flex;
-      gap: 16px;
-      align-items: center;
-      flex-wrap: wrap;
+    .pp-lead {
+      font-size: 15px;
+      color: var(--ink-60);
+      line-height: 1.8;
+      max-width: 520px;
+      opacity: 0;
+      animation: rise 0.7s 0.25s ease forwards;
     }
 
-    .pp-meta-sep { color: var(--ink-12); }
-
-    /* ── Summary cards ── */
-    .pp-summary {
-      max-width: 720px;
-      margin: 56px auto 0;
-      padding: 0 48px;
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
+    .pp-hero-meta {
+      text-align: right;
+      opacity: 0;
+      animation: rise 0.7s 0.3s ease forwards;
     }
 
-    .pp-sum-card {
-      border: 1px solid var(--rule);
-      border-radius: 10px;
-      padding: 20px 18px;
-      background: var(--white);
-      transition: border-color 0.2s, background 0.2s;
-    }
-
-    .pp-sum-card:hover { border-color: rgba(10,122,110,0.25); background: var(--teal-lt); }
-
-    .pp-sum-label {
+    .pp-date-badge {
+      display: inline-block;
       font-size: 11px;
       font-weight: 600;
       letter-spacing: 1px;
       text-transform: uppercase;
-      color: var(--teal);
-      margin-bottom: 6px;
+      color: var(--accent);
+      border: 1px solid rgba(10,122,110,0.22);
+      background: var(--accent-lt);
+      padding: 5px 13px;
+      border-radius: 4px;
+      margin-bottom: 10px;
     }
 
-    .pp-sum-value {
-      font-family: var(--serif);
-      font-size: 18px;
-      color: var(--ink);
-      letter-spacing: -0.3px;
+    .pp-pkg {
+      display: block;
+      font-size: 12px;
+      color: var(--ink-35);
+      letter-spacing: 0.3px;
     }
 
-    /* ── Content ── */
-    .pp-content {
-      max-width: 720px;
+    /* ══ SUMMARY BAND ══════════════════════════════════════ */
+    .summary-band { background: var(--accent); }
+
+    .summary-band-inner {
+      max-width: 1300px;
       margin: 0 auto;
-      padding: 64px 48px 100px;
+      padding: 22px clamp(20px, 4vw, 48px);
+      display: flex;
+      align-items: center;
+      gap: 14px;
     }
 
+    .summary-tick {
+      width: 26px; height: 26px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      font-size: 13px;
+      color: #fff;
+    }
+
+    .summary-band p {
+      font-size: 14px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.92);
+      line-height: 1.6;
+    }
+
+    .summary-band strong { color: #fff; font-weight: 700; }
+
+    /* ══ STATS STRIPE ══════════════════════════════════════ */
+    .stripe { background: var(--paper); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+
+    .stripe-inner {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 0 clamp(20px, 4vw, 48px);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background: var(--rule);
+    }
+
+    @media (max-width: 520px) { .stripe-inner { grid-template-columns: 1fr 1fr; } }
+
+    .stripe-item { background: var(--paper); padding: 26px 20px; text-align: center; }
+
+    .stripe-num {
+      font-family: var(--serif);
+      font-size: 30px;
+      font-weight: 400;
+      color: var(--ink);
+      letter-spacing: -1px;
+      display: block;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .stripe-label { font-size: 12px; color: var(--ink-35); letter-spacing: 0.3px; }
+
+    /* ══ BODY ══════════════════════════════════════════════ */
+    .pp-body {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 64px clamp(20px, 4vw, 48px) 100px;
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 56px;
+      align-items: start;
+    }
+
+    @media (max-width: 840px) {
+      .pp-body { grid-template-columns: 1fr; gap: 40px; }
+      .pp-toc  { display: none; }
+    }
+
+    /* ── TOC ── */
+    .pp-toc { position: sticky; top: 80px; }
+
+    .pp-toc-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      color: var(--ink-35);
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .pp-toc-list { list-style: none; }
+
+    .pp-toc-list li { border-bottom: 1px solid var(--rule); }
+    .pp-toc-list li:last-child { border-bottom: none; }
+
+    .pp-toc-list a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 0;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ink-60);
+      text-decoration: none;
+      transition: color 0.2s, padding-left 0.2s;
+    }
+
+    .pp-toc-list a:hover { color: var(--accent); padding-left: 4px; }
+
+    .pp-toc-list .num {
+      font-family: var(--serif);
+      font-size: 11px;
+      color: var(--ink-35);
+      width: 20px;
+      flex-shrink: 0;
+    }
+
+    /* ── SECTION CARDS ── */
     .pp-section {
-      margin-bottom: 56px;
-      padding-bottom: 56px;
-      border-bottom: 1px solid var(--rule);
+      margin-bottom: 24px;
+      border: 1px solid var(--rule);
+      border-radius: 14px;
+      overflow: hidden;
+      scroll-margin-top: 84px;
     }
 
-    .pp-section:last-child {
-      border-bottom: none;
-      margin-bottom: 0;
-      padding-bottom: 0;
+    .pp-section-head {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 20px 26px;
+      background: var(--paper);
+      border-bottom: 1px solid var(--rule);
     }
 
     .pp-section-num {
       font-family: var(--serif);
-      font-size: 11px;
+      font-size: 13px;
       color: var(--ink-35);
-      letter-spacing: 0.5px;
-      display: block;
-      margin-bottom: 10px;
+      width: 24px;
+      flex-shrink: 0;
     }
 
-    .pp-section-h {
-      font-family: var(--serif);
-      font-size: 26px;
-      font-weight: 400;
-      line-height: 1.15;
-      letter-spacing: -0.5px;
-      color: var(--ink);
-      margin-bottom: 18px;
-    }
-
-    .pp-section-h em { font-style: italic; color: var(--teal); }
-
-    .pp-p {
+    .pp-section-title {
       font-size: 15px;
-      color: var(--ink-60);
-      line-height: 1.80;
-      margin-bottom: 16px;
+      font-weight: 700;
+      color: var(--ink);
+      letter-spacing: -0.1px;
     }
 
-    .pp-p:last-child { margin-bottom: 0; }
-
-    .pp-p strong { color: var(--ink); font-weight: 600; }
-
-    .pp-list {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin: 20px 0;
+    .pp-section-icon {
+      margin-left: auto;
+      font-size: 18px;
+      opacity: 0.45;
     }
 
-    .pp-list li {
-      display: flex;
-      gap: 12px;
-      align-items: flex-start;
+    .pp-section-body {
+      padding: 24px 26px;
+      background: var(--white);
+    }
+
+    /* ══ PROSE ═════════════════════════════════════════════ */
+    p {
       font-size: 14px;
+      color: var(--ink-60);
+      line-height: 1.8;
+      margin-bottom: 12px;
+    }
+
+    p:last-child { margin-bottom: 0; }
+
+    strong { color: var(--ink); font-weight: 600; }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ══ LISTS ═════════════════════════════════════════════ */
+    ul.item-list { list-style: none; margin: 10px 0; }
+
+    ul.item-list li {
+      font-size: 14px;
+      color: var(--ink-60);
+      padding: 8px 0 8px 20px;
+      position: relative;
+      line-height: 1.65;
+      border-bottom: 1px solid var(--ink-06);
+    }
+
+    ul.item-list li:last-child { border-bottom: none; padding-bottom: 0; }
+    ul.item-list li:first-child { padding-top: 0; }
+
+    ul.item-list li::before {
+      content: '→';
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+      font-size: 11px;
+      top: 10px;
+    }
+
+    ul.never-list li::before { content: '✕'; color: #C2400A; font-size: 10px; top: 11px; }
+
+    /* ══ DATA TABLE ════════════════════════════════════════ */
+    .data-table-wrap {
+      overflow-x: auto;
+      margin: 14px 0;
+      border: 1px solid var(--rule);
+      border-radius: 10px;
+    }
+
+    .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+    .data-table th {
+      text-align: left;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--ink-35);
+      padding: 11px 14px;
+      background: var(--paper);
+      border-bottom: 1px solid var(--rule);
+      white-space: nowrap;
+    }
+
+    .data-table td {
+      padding: 11px 14px;
+      color: var(--ink-60);
+      border-bottom: 1px solid var(--ink-06);
+      vertical-align: top;
+    }
+
+    .data-table tr:last-child td { border-bottom: none; }
+
+    .pill {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 100px;
+      white-space: nowrap;
+    }
+
+    .pill-no   { background: rgba(10,122,110,0.10); color: var(--accent); border: 1px solid rgba(10,122,110,0.18); }
+    .pill-anon { background: rgba(14,14,12,0.06);   color: var(--ink-60); border: 1px solid var(--rule); }
+
+    /* ══ NOTE ══════════════════════════════════════════════ */
+    .note {
+      background: var(--accent-lt);
+      border: 1px solid rgba(10,122,110,0.18);
+      border-left: 3px solid var(--accent);
+      border-radius: 0 8px 8px 0;
+      padding: 13px 16px;
+      margin: 14px 0;
+      font-size: 13px;
       color: var(--ink-60);
       line-height: 1.65;
     }
 
-    .pp-list-dot {
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: var(--teal);
-      flex-shrink: 0;
-      margin-top: 7px;
-    }
+    .note strong { color: var(--accent); }
 
-    .pp-highlight {
-      background: var(--teal-lt);
-      border: 1px solid rgba(10,122,110,0.18);
-      border-radius: 10px;
-      padding: 20px 22px;
-      margin: 24px 0;
-    }
-
-    .pp-highlight p {
-      font-size: 14px;
-      color: var(--teal);
-      line-height: 1.70;
-    }
-
-    .pp-highlight p strong { color: var(--teal); font-weight: 700; }
-
-    .pp-contact-card {
+    /* ══ CONTACT CARD ══════════════════════════════════════ */
+    .contact-card {
       background: var(--paper);
       border: 1px solid var(--rule);
-      border-radius: 12px;
-      padding: 28px;
-      margin-top: 24px;
+      border-radius: 10px;
+      padding: 18px 20px;
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: 90px 1fr;
+      gap: 7px 12px;
+      font-size: 13px;
+      align-items: baseline;
     }
 
-    .pp-contact-label {
+    .contact-card .clabel {
       font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 1.2px;
+      font-weight: 700;
       text-transform: uppercase;
+      letter-spacing: 0.6px;
       color: var(--ink-35);
-      margin-bottom: 10px;
+      padding-top: 1px;
     }
 
-    .pp-contact-link {
-      font-family: var(--serif);
-      font-size: 20px;
-      color: var(--teal);
-      text-decoration: none;
-      letter-spacing: -0.3px;
-    }
+    .contact-card .cval { color: var(--ink-60); }
+    .contact-card .cval a { color: var(--accent); }
 
-    .pp-contact-link:hover { text-decoration: underline; text-underline-offset: 4px; }
-
-    /* ── Footer ── */
-    footer {
+    /* ══ STEP TIMELINE ═════════════════════════════════════ */
+    .tl-card {
       background: var(--paper);
-      border-top: 1px solid var(--rule);
-      padding: 44px 48px;
+      border: 1px solid var(--rule);
+      border-radius: 10px;
+      padding: 18px 20px;
+      margin: 14px 0;
     }
+
+    .tl-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--ink-06);
+    }
+
+    .tl-row:last-child { border-bottom: none; }
+
+    .tl-num {
+      font-family: var(--serif);
+      font-size: 12px;
+      color: var(--ink-35);
+      width: 20px;
+      flex-shrink: 0;
+      padding-top: 1px;
+    }
+
+    .tl-text strong { font-size: 14px; font-weight: 600; color: var(--ink); display: block; margin-bottom: 2px; }
+    .tl-text span   { font-size: 13px; color: var(--ink-60); line-height: 1.6; }
+
+    /* ══ PRIV GRID ═════════════════════════════════════════ */
+    .priv-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 14px 0;
+    }
+
+    @media (max-width: 520px) { .priv-grid { grid-template-columns: 1fr; } }
+
+    .priv-cell {
+      border: 1px solid var(--rule);
+      border-radius: 10px;
+      padding: 16px;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .priv-cell:hover { border-color: rgba(10,122,110,0.25); background: var(--accent-lt); }
+
+    .priv-cell-title { font-size: 13px; font-weight: 600; color: var(--ink); margin-bottom: 3px; }
+    .priv-cell-desc  { font-size: 12px; color: var(--ink-35); line-height: 1.55; }
+
+    /* ══ SCROLL REVEAL ═════════════════════════════════════ */
+    .reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.6s ease, transform 0.6s ease; }
+    .reveal.in { opacity: 1; transform: none; }
+    .reveal-d1 { transition-delay: 0.08s; }
+    .reveal-d2 { transition-delay: 0.16s; }
+    .reveal-d3 { transition-delay: 0.24s; }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    /* ══ FOOTER ════════════════════════════════════════════ */
+    footer { background: var(--paper); border-top: 1px solid var(--rule); padding: 38px clamp(20px, 4vw, 48px); }
 
     .footer-inner {
-      max-width: 1200px;
-      margin: 0 auto;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 20px;
+      max-width: 1300px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;
     }
 
-    .footer-wordmark { font-family: var(--serif); font-size: 17px; color: var(--ink-60); text-decoration: none; }
-
-    .footer-links { display: flex; gap: 28px; list-style: none; }
+    .footer-wordmark { font-family: var(--serif); font-size: 16px; color: var(--ink-60); text-decoration: none; }
+    .footer-links { display: flex; gap: 22px; list-style: none; flex-wrap: wrap; }
     .footer-links a { font-size: 13px; color: var(--ink-35); text-decoration: none; transition: color 0.2s; }
     .footer-links a:hover { color: var(--ink); }
-
-    .footer-copy { font-size: 12px; color: var(--ink-35); letter-spacing: 0.2px; }
-
-    @media (max-width: 640px) {
-      nav { padding: 0 24px; }
-      .pp-hero { padding: 52px 24px 48px; }
-      .pp-summary { padding: 0 24px; grid-template-columns: 1fr; }
-      .pp-content { padding: 48px 24px 80px; }
-      footer { padding: 44px 24px; }
-      .footer-inner { flex-direction: column; align-items: flex-start; }
-    }
+    .footer-copy { font-size: 12px; color: var(--ink-35); }
   </style>
 </head>
 <body>
 
-<nav>
+<!-- ══ NAV ══════════════════════════════════════════════ -->
+<nav id="mainNav">
   <a href="index.html" class="nav-wordmark">PhaseOut</a>
-  <a href="index.html" class="nav-back">&larr; Back to home</a>
+  <ul class="nav-links">
+    <li class="nav-hide-sm"><a href="index.html#features">Features</a></li>
+    <li class="nav-hide-sm"><a href="index.html#how-it-works">How it works</a></li>
+    <li class="nav-hide-sm"><a href="index.html#about">About</a></li>
+    <li><a href="index.html#download" class="nav-dl">Download APK</a></li>
+  </ul>
 </nav>
 
-<div class="pp-hero">
-  <div class="pp-hero-inner">
-    <span class="pp-eyebrow">Legal</span>
-    <h1 class="pp-h1">Privacy <em>Policy</em></h1>
-    <div class="pp-meta">
-      <span>PhaseOut &mdash; BrightDev</span>
-      <span class="pp-meta-sep">/</span>
-      <span>Effective: January 1, 2026</span>
-      <span class="pp-meta-sep">/</span>
-      <span>Last updated: January 1, 2026</span>
+<div class="page-wrap">
+
+  <!-- ══ HERO ════════════════════════════════════════════ -->
+  <div class="pp-hero">
+    <div>
+      <span class="pp-eyebrow">Legal</span>
+      <h1 class="pp-h1">Privacy<br><em>Policy.</em></h1>
+      <p class="pp-lead">PhaseOut is a sleep and digital wellness app by BrightDev. This policy explains exactly what data PhaseOut accesses, why it accesses it, and what it never does.</p>
     </div>
-  </div>
-</div>
-
-<div class="pp-summary">
-  <div class="pp-sum-card">
-    <div class="pp-sum-label">Data collected</div>
-    <div class="pp-sum-value">None</div>
-  </div>
-  <div class="pp-sum-card">
-    <div class="pp-sum-label">Account required</div>
-    <div class="pp-sum-value">Never</div>
-  </div>
-  <div class="pp-sum-card">
-    <div class="pp-sum-label">Ads or trackers</div>
-    <div class="pp-sum-value">Zero</div>
-  </div>
-</div>
-
-<div class="pp-content">
-
-  <div class="pp-section">
-    <span class="pp-section-num">01</span>
-    <h2 class="pp-section-h">The short version</h2>
-    <div class="pp-highlight">
-      <p><strong>PhaseOut collects no personal data whatsoever.</strong> Everything the app does &mdash; schedules, usage stats, focus sessions, settings &mdash; lives entirely on your device and never leaves it. There are no servers, no accounts, no analytics, and no third-party SDKs that phone home.</p>
-    </div>
-    <p class="pp-p">The sections below explain this in detail as required by applicable privacy regulations. If anything is unclear, contact us at the address at the bottom of this page.</p>
-  </div>
-
-  <div class="pp-section">
-    <span class="pp-section-num">02</span>
-    <h2 class="pp-section-h">Information we <em>collect</em></h2>
-    <p class="pp-p">We collect <strong>no information</strong>. PhaseOut does not collect, store, transmit, or process any personal data on any server operated by BrightDev or any third party.</p>
-    <p class="pp-p">All data generated by your use of the app &mdash; including your bedtime schedules, daily screen time figures, app usage breakdowns, and focus session history &mdash; is stored locally in your device's private app storage using SQLite (sqflite). This data is inaccessible to BrightDev and is deleted automatically when you uninstall the app.</p>
-  </div>
-
-  <div class="pp-section">
-    <span class="pp-section-num">03</span>
-    <h2 class="pp-section-h">Permissions we request</h2>
-    <p class="pp-p">PhaseOut requests the following Android permissions solely to deliver its core functionality. None of these permissions are used to collect data about you.</p>
-    <ul class="pp-list">
-      <li><span class="pp-list-dot"></span><span><strong>Usage Access</strong> — to read per-app screen time from the Android UsageStatsManager so the app can display your usage analytics locally.</span></li>
-      <li><span class="pp-list-dot"></span><span><strong>Do Not Disturb Access</strong> — to enable and disable DND mode at your scheduled bedtime and restore it in the morning.</span></li>
-      <li><span class="pp-list-dot"></span><span><strong>Write Settings</strong> — to adjust screen brightness at bedtime and restore it each morning.</span></li>
-      <li><span class="pp-list-dot"></span><span><strong>Schedule Exact Alarms</strong> — to fire your morning alarm and bedtime triggers at the exact times you specify.</span></li>
-      <li><span class="pp-list-dot"></span><span><strong>Foreground Service / Boot Receiver</strong> — to keep the background scheduler alive reliably, including after device restart.</span></li>
-      <li><span class="pp-list-dot"></span><span><strong>Draw Over Other Apps (optional)</strong> — used only in Focus Mode to display a gentle overlay when a blocked app is opened.</span></li>
-    </ul>
-    <p class="pp-p">No permission is used to collect, transmit, or store data remotely.</p>
-  </div>
-
-  <div class="pp-section">
-    <span class="pp-section-num">04</span>
-    <h2 class="pp-section-h">Third-party services</h2>
-    <p class="pp-p">PhaseOut does not integrate any third-party analytics, advertising, crash-reporting, or behavioural tracking SDKs. There are no calls to Google Analytics, Firebase Analytics, Crashlytics, Sentry, Mixpanel, Amplitude, or any comparable service.</p>
-    <p class="pp-p">The app may use Firebase for update notifications only if you have consented to in-app update checks. This is limited to version metadata retrieval and does not involve any user identifier or usage data.</p>
-  </div>
-
-  <div class="pp-section">
-    <span class="pp-section-num">05</span>
-    <h2 class="pp-section-h">Children's privacy</h2>
-    <p class="pp-p">PhaseOut does not knowingly collect any information from anyone, including children under the age of 13. Because no data is collected, the app is safe for use by people of all ages.</p>
-  </div>
-
-  <div class="pp-section">
-    <span class="pp-section-num">06</span>
-    <h2 class="pp-section-h">Data retention &amp; deletion</h2>
-    <p class="pp-p">All app data is stored locally on your device. You can clear it at any time through Android's standard app settings (<strong>Settings &rarr; Apps &rarr; PhaseOut &rarr; Storage &rarr; Clear Data</strong>). Uninstalling the app removes all data permanently.</p>
-    <p class="pp-p">BrightDev holds no copy of your data and therefore cannot retrieve, export, or delete it on your behalf &mdash; it was never sent to us in the first place.</p>
-  </div>
-
-  <div class="pp-section">
-    <span class="pp-section-num">07</span>
-    <h2 class="pp-section-h">Changes to this policy</h2>
-    <p class="pp-p">If this policy ever changes, the updated version will be published at this URL. Material changes will be communicated via a notice inside the app. The effective date at the top of this page will reflect the most recent revision.</p>
-    <p class="pp-p">Our commitment &mdash; that PhaseOut will never collect personal data &mdash; will not change.</p>
-  </div>
-
-  <div class="pp-section">
-    <span class="pp-section-num">08</span>
-    <h2 class="pp-section-h">Contact</h2>
-    <p class="pp-p">Questions, concerns, or requests regarding this policy can be directed to:</p>
-    <div class="pp-contact-card">
-      <div class="pp-contact-label">BrightDev &mdash; Privacy</div>
-      <a href="mailto:privacy@brightdev.co.za" class="pp-contact-link">privacy@brightdev.co.za</a>
+    <div class="pp-hero-meta">
+      <span class="pp-date-badge">April 2026</span>
+      <span class="pp-pkg">com.brightdev.phaseout</span>
     </div>
   </div>
 
+  <!-- ══ SUMMARY BAND ══════════════════════════════════════ -->
+  <div class="summary-band">
+    <div class="summary-band-inner">
+      <div class="summary-tick">✓</div>
+      <p><strong>The short version:</strong> PhaseOut does not collect, upload, or sell your personal data. Everything stays on your device. The only data that ever leaves is anonymous crash reports sent to Firebase Crashlytics — and you can disable those in Settings.</p>
+    </div>
+  </div>
+
+  <!-- ══ STATS STRIPE ══════════════════════════════════════ -->
+  <div class="stripe">
+    <div class="stripe-inner">
+      <div class="stripe-item reveal"><span class="stripe-num">0</span><span class="stripe-label">Personal data collected</span></div>
+      <div class="stripe-item reveal reveal-d1"><span class="stripe-num">0</span><span class="stripe-label">Ads or trackers</span></div>
+      <div class="stripe-item reveal reveal-d2"><span class="stripe-num">1</span><span class="stripe-label">Third-party SDK</span></div>
+      <div class="stripe-item reveal reveal-d3"><span class="stripe-num">Free</span><span class="stripe-label">No account ever</span></div>
+    </div>
+  </div>
+
+  <!-- ══ BODY ══════════════════════════════════════════════ -->
+  <div class="pp-body">
+
+    <!-- TOC -->
+    <aside class="pp-toc">
+      <span class="pp-toc-label">Contents</span>
+      <ul class="pp-toc-list">
+        <li><a href="#s1"><span class="num">01</span>Data we access</a></li>
+        <li><a href="#s2"><span class="num">02</span>How we use it</a></li>
+        <li><a href="#s3"><span class="num">03</span>On-device data</a></li>
+        <li><a href="#s4"><span class="num">04</span>Third-party services</a></li>
+        <li><a href="#s5"><span class="num">05</span>Permissions</a></li>
+        <li><a href="#s6"><span class="num">06</span>Retention &amp; deletion</a></li>
+        <li><a href="#s7"><span class="num">07</span>Your rights</a></li>
+        <li><a href="#s8"><span class="num">08</span>What we never do</a></li>
+        <li><a href="#s9"><span class="num">09</span>Children</a></li>
+        <li><a href="#s10"><span class="num">10</span>Policy updates</a></li>
+        <li><a href="#s11"><span class="num">11</span>Contact</a></li>
+      </ul>
+    </aside>
+
+    <!-- Content -->
+    <div class="pp-content">
+
+      <!-- 01 -->
+      <div class="pp-section reveal" id="s1">
+        <div class="pp-section-head">
+          <span class="pp-section-num">01</span>
+          <span class="pp-section-title">Data we access</span>
+          <span class="pp-section-icon">📊</span>
+        </div>
+        <div class="pp-section-body">
+          <p>PhaseOut reads the following data locally on your device to power its features. None of it is transmitted to any server except where noted in section 4.</p>
+          <div class="data-table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Data type</th>
+                  <th>Why it's needed</th>
+                  <th>Leaves device?</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>App usage statistics</strong></td>
+                  <td>Display your daily screen time; enforce app limits you set</td>
+                  <td><span class="pill pill-no">Never</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Battery level &amp; state</strong></td>
+                  <td>Predict charge time; send an evening plug-in reminder</td>
+                  <td><span class="pill pill-no">Never</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Active media sessions</strong></td>
+                  <td>Stop audio playback from any app at your scheduled bedtime</td>
+                  <td><span class="pill pill-no">Never</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Screen brightness</strong></td>
+                  <td>Dim screen at bedtime; restore it each morning</td>
+                  <td><span class="pill pill-no">Never</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Do Not Disturb status</strong></td>
+                  <td>Enable DND at bedtime; restore your previous setting in the morning</td>
+                  <td><span class="pill pill-no">Never</span></td>
+                </tr>
+                <tr>
+                  <td><strong>Crash diagnostics</strong></td>
+                  <td>Anonymous error reports to help us fix bugs (see section 4)</td>
+                  <td><span class="pill pill-anon">Anonymous only</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 02 -->
+      <div class="pp-section reveal" id="s2">
+        <div class="pp-section-head">
+          <span class="pp-section-num">02</span>
+          <span class="pp-section-title">How we use your data</span>
+          <span class="pp-section-icon">⚙️</span>
+        </div>
+        <div class="pp-section-body">
+          <p>Data accessed by PhaseOut is used exclusively to provide the app's features. We do not use it for advertising, profiling, or any purpose beyond operating the app.</p>
+          <ul class="item-list">
+            <li><strong>Schedules</strong> — your bedtime and wake times are stored locally and used only to trigger actions at the right moment</li>
+            <li><strong>Screen time</strong> — usage stats are displayed to you inside the app; they are never analysed, aggregated, or sent anywhere</li>
+            <li><strong>Battery prediction</strong> — battery snapshots are stored locally only to estimate a charge time; never transmitted</li>
+            <li><strong>Focus sessions</strong> — blocked-app lists and session history are stored locally; used only to display history and enforce focus locks</li>
+            <li><strong>Crash data</strong> — if the app crashes, anonymous diagnostic data goes to Firebase Crashlytics solely to help us fix bugs</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 03 -->
+      <div class="pp-section reveal" id="s3">
+        <div class="pp-section-head">
+          <span class="pp-section-num">03</span>
+          <span class="pp-section-title">Data that stays on your device</span>
+          <span class="pp-section-icon">🔒</span>
+        </div>
+        <div class="pp-section-body">
+          <p>All user-generated data is stored in a local SQLite database on your device. This includes:</p>
+          <ul class="item-list">
+            <li>Your schedules and their settings (bedtime, wake time, actions, days)</li>
+            <li>Daily app usage records</li>
+            <li>Battery level snapshots for charge-time prediction</li>
+            <li>Focus session history and blocked-app lists</li>
+            <li>Schedule activity logs</li>
+          </ul>
+          <div class="note">
+            <strong>Deleting the app removes all data permanently.</strong> There is no account and no cloud backup — uninstalling PhaseOut clears everything immediately and irreversibly.
+          </div>
+          <div class="priv-grid">
+            <div class="priv-cell"><div class="priv-cell-title">No account</div><div class="priv-cell-desc">Open and use immediately. No sign-up, ever.</div></div>
+            <div class="priv-cell"><div class="priv-cell-title">No data sent</div><div class="priv-cell-desc">Schedules and usage stats live entirely on-device.</div></div>
+            <div class="priv-cell"><div class="priv-cell-title">Free forever</div><div class="priv-cell-desc">No premium plan, no paywall, no subscription.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 04 -->
+      <div class="pp-section reveal" id="s4">
+        <div class="pp-section-head">
+          <span class="pp-section-num">04</span>
+          <span class="pp-section-title">Third-party services</span>
+          <span class="pp-section-icon">🌐</span>
+        </div>
+        <div class="pp-section-body">
+          <p>PhaseOut uses one third-party service: <strong>Firebase Crashlytics</strong> (Google LLC). Crashlytics receives an anonymous crash report when the app encounters an unhandled error. Each report contains:</p>
+          <ul class="item-list">
+            <li>The type of error and the line of code where it occurred</li>
+            <li>Your device model and manufacturer</li>
+            <li>Android OS version</li>
+            <li>PhaseOut app version number</li>
+            <li>Timestamp of the crash</li>
+          </ul>
+          <p>Crash reports do <strong>not</strong> contain your schedules, usage data, focus history, battery data, or any personally identifying information such as your name, email, or advertising ID.</p>
+          <div class="note">
+            <strong>You can disable this.</strong> Go to <strong>Settings → Privacy → Usage analytics</strong>. When disabled, no data is ever sent to Crashlytics.
+          </div>
+          <p>Firebase Crashlytics is operated by Google LLC and is subject to <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a>. PhaseOut has no other network connections during normal operation.</p>
+        </div>
+      </div>
+
+      <!-- 05 -->
+      <div class="pp-section reveal" id="s5">
+        <div class="pp-section-head">
+          <span class="pp-section-num">05</span>
+          <span class="pp-section-title">Permissions we request</span>
+          <span class="pp-section-icon">🔔</span>
+        </div>
+        <div class="pp-section-body">
+          <p>PhaseOut requests permissions contextually — only when you first use the feature that needs them. No permissions are requested on first launch.</p>
+          <ul class="item-list">
+            <li><strong>Notifications</strong> — to deliver bedtime reminders and schedule alerts</li>
+            <li><strong>Usage Access</strong> — to display your per-app screen time inside the app</li>
+            <li><strong>Notification Listener</strong> — to detect and stop active media sessions at your scheduled bedtime</li>
+            <li><strong>Display over other apps</strong> — to show the focus-lock overlay when a blocked app is opened during a focus session</li>
+            <li><strong>Battery optimisation exemption</strong> — to keep the background service running overnight so schedules fire reliably</li>
+            <li><strong>Do Not Disturb access</strong> — only if you enable the DND option in a schedule</li>
+            <li><strong>Modify system settings</strong> — only if you enable the "Dim brightness" option in a schedule</li>
+            <li><strong>Set exact alarms</strong> — to trigger the morning restore action at the precise time you set</li>
+          </ul>
+          <p>No sensitive permissions — camera, microphone, contacts, location, SMS, call logs, or external storage — are requested or used.</p>
+        </div>
+      </div>
+
+      <!-- 06 -->
+      <div class="pp-section reveal" id="s6">
+        <div class="pp-section-head">
+          <span class="pp-section-num">06</span>
+          <span class="pp-section-title">Data retention &amp; deletion</span>
+          <span class="pp-section-icon">🗂️</span>
+        </div>
+        <div class="pp-section-body">
+          <p>Because all data is stored locally, you are in full control:</p>
+          <div class="tl-card">
+            <div class="tl-row">
+              <span class="tl-num">01</span>
+              <div class="tl-text"><strong>App &amp; usage data</strong><span>Retained on your device until you clear it in Settings or uninstall the app</span></div>
+            </div>
+            <div class="tl-row">
+              <span class="tl-num">02</span>
+              <div class="tl-text"><strong>Focus history</strong><span>Clearable from the Focus tab at any time</span></div>
+            </div>
+            <div class="tl-row">
+              <span class="tl-num">03</span>
+              <div class="tl-text"><strong>Crashlytics data</strong><span>Retained by Google for up to 90 days per Google's standard policy; disabling analytics in Settings prevents future reports</span></div>
+            </div>
+            <div class="tl-row">
+              <span class="tl-num">04</span>
+              <div class="tl-text"><strong>Full deletion</strong><span>Uninstalling PhaseOut removes all local data permanently and immediately — no account to close</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 07 -->
+      <div class="pp-section reveal" id="s7">
+        <div class="pp-section-head">
+          <span class="pp-section-num">07</span>
+          <span class="pp-section-title">Your rights &amp; controls</span>
+          <span class="pp-section-icon">🛡️</span>
+        </div>
+        <div class="pp-section-body">
+          <p>Because PhaseOut stores no personal data on any server, most data-subject rights apply to your local device — where you already have full control. Specific controls:</p>
+          <ul class="item-list">
+            <li><strong>Disable crash reporting</strong> — Settings → Privacy → Usage analytics</li>
+            <li><strong>Revoke permissions</strong> — Android Settings → Apps → PhaseOut → Permissions at any time; revoking a permission disables only the feature that depends on it</li>
+            <li><strong>Delete local data</strong> — individual history records are clearable from within the app; uninstalling removes everything</li>
+            <li><strong>Opt out of analytics</strong> — there is no profile to close beyond the Crashlytics toggle above</li>
+          </ul>
+          <p>If you believe PhaseOut has handled your data incorrectly, contact us via the details in section 11. We aim to respond within 30 days.</p>
+        </div>
+      </div>
+
+      <!-- 08 -->
+      <div class="pp-section reveal" id="s8">
+        <div class="pp-section-head">
+          <span class="pp-section-num">08</span>
+          <span class="pp-section-title">What we never do</span>
+          <span class="pp-section-icon">🚫</span>
+        </div>
+        <div class="pp-section-body">
+          <ul class="item-list never-list">
+            <li>We never upload your app usage data, schedules, or focus history to any server</li>
+            <li>We never read your messages, contacts, photos, files, or call logs</li>
+            <li>We never track your location</li>
+            <li>We never share data with advertisers or data brokers</li>
+            <li>We never show ads of any kind</li>
+            <li>We never require account creation or collect email addresses</li>
+            <li>We never sell your data in any form</li>
+            <li>We never access your camera or microphone</li>
+            <li>We never use your data to build a profile or make inferences about you</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 09 -->
+      <div class="pp-section reveal" id="s9">
+        <div class="pp-section-head">
+          <span class="pp-section-num">09</span>
+          <span class="pp-section-title">Children's privacy</span>
+          <span class="pp-section-icon">👶</span>
+        </div>
+        <div class="pp-section-body">
+          <p>PhaseOut is not directed at children under the age of 13. We do not knowingly collect any personal information from children under 13. Since PhaseOut requires no account and transmits no personal data, there is no mechanism by which we could collect a child's personal information.</p>
+          <p>If you have concerns about a child using PhaseOut, please contact us at the address in section 11.</p>
+        </div>
+      </div>
+
+      <!-- 10 -->
+      <div class="pp-section reveal" id="s10">
+        <div class="pp-section-head">
+          <span class="pp-section-num">10</span>
+          <span class="pp-section-title">Changes to this policy</span>
+          <span class="pp-section-icon">🔄</span>
+        </div>
+        <div class="pp-section-body">
+          <p>If we make material changes — for example, if a future version of PhaseOut begins collecting additional data or integrating a new third-party service — we will:</p>
+          <ul class="item-list">
+            <li>Update the date shown on this page</li>
+            <li>Display an in-app notice on the next launch of the updated version</li>
+            <li>Describe the specific change clearly in that notice</li>
+          </ul>
+          <p>Continued use of PhaseOut after a policy change constitutes acceptance of the updated policy.</p>
+        </div>
+      </div>
+
+      <!-- 11 -->
+      <div class="pp-section reveal" id="s11">
+        <div class="pp-section-head">
+          <span class="pp-section-num">11</span>
+          <span class="pp-section-title">Contact</span>
+          <span class="pp-section-icon">✉️</span>
+        </div>
+        <div class="pp-section-body">
+          <p>Questions about this policy, data deletion requests, or concerns about how your data was handled:</p>
+          <div class="contact-card">
+            <span class="clabel">Developer</span><span class="cval">Dzivhani Unarine</span>
+            <span class="clabel">Company</span><span class="cval">BrightDev</span>
+            <span class="clabel">Email</span><span class="cval"><a href="mailto:unarined3@gmail.com">unarined3@gmail.com</a></span>
+            <span class="clabel">App</span><span class="cval">PhaseOut — Sleep &amp; Focus</span>
+            <span class="clabel">Package</span><span class="cval">com.brightdev.phaseout</span>
+          </div>
+          <p style="margin-top:14px">We aim to respond to all privacy enquiries within 30 days.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
 </div>
 
+<!-- ══ FOOTER ════════════════════════════════════════════ -->
 <footer>
   <div class="footer-inner">
     <a href="index.html" class="footer-wordmark">PhaseOut</a>
     <ul class="footer-links">
       <li><a href="index.html#features">Features</a></li>
-      <li><a href="privacy_policy.html">Privacy Policy</a></li>
+      <li><a href="#">Privacy Policy</a></li>
       <li><a href="https://github.com/brightdev/phaseout" target="_blank">GitHub</a></li>
-      <li><a href="mailto:privacy@brightdev.co.za">Contact</a></li>
+      <li><a href="mailto:unarined3@gmail.com">Contact</a></li>
     </ul>
     <span class="footer-copy">&copy; 2026 BrightDev &middot; Built in South Africa</span>
   </div>
 </footer>
+
+<script>
+  window.addEventListener('scroll', function () {
+    document.getElementById('mainNav').style.height = window.scrollY > 50 ? '52px' : '62px';
+  }, { passive: true });
+
+  (function () {
+    var els = document.querySelectorAll('.reveal');
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.1 });
+    els.forEach(function (el) { io.observe(el); });
+  })();
+</script>
 
 </body>
 </html>
